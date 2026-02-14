@@ -1,0 +1,142 @@
+<!DOCTYPE html >
+<html dir="rtl">
+<head>
+  <title>Admin Dashboard</title>
+  <!-- <link rel="stylesheet" href="admin_style.css"> -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white shadow p-4 flex justify-between items-center">
+  <h1 class="text-2xl font-bold">אתר מנהל</h1>
+  <span class="text-sm text-gray-500">מלאי והזמנות</span>
+</header>
+
+<main class="p-6 space-y-8">
+  <div class="flex gap-2 mb-6">
+    <button id="tabInventory"
+      class="tab-btn bg-blue-600 text-white px-4 py-2 rounded">
+      מלאי
+    </button>
+
+    <button id="tabOrders"
+      class="tab-btn bg-gray-200 px-4 py-2 rounded">
+      הזמנות
+    </button>
+
+    <button id="tabAllOrders"
+      class="tab-btn bg-gray-200 px-4 py-2 rounded">
+      כל ההזמנות
+    </button>
+  </div>
+
+  
+
+
+  <!-- Inventory Section -->
+  <section id="inventorySection" class="bg-white rounded shadow">
+    <div class="p-4 border-b flex justify-between items-center">
+      <h2 class="text-lg font-semibold">מלאי</h2>
+    </div>
+
+    <div class="overflow-x-auto">
+      <input id="inventorySearch"
+      placeholder="Search inventory…"
+      class="border p-2 rounded w-64 mb-4">
+
+      <table id="inventoryTable" class="w-full text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="p-3 text-left">ברקוד</th>
+            <th class="p-3 text-left">שם</th>
+            <th class="p-3 text-left">קטגוריה</th>
+            <th class="p-3 text-left">מחיר</th>
+            <th class="p-3 text-left">מלאי</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Orders Section -->
+  <section id="ordersSection" class="bg-white rounded shadow hidden">
+    <div class="p-4 border-b flex justify-between items-center">
+      <h2 class="text-lg font-semibold">הזמנות</h2>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table id="ordersTable" class="w-full text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="p-3 text-left">מספר מזהה</th>
+            <th class="p-3 text-left">לקוח</th>
+            <th class="p-3 text-left">סטטוס</th>
+            <th class="p-3 text-left">ביצוע</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y"></tbody>
+      </table>
+    </div>
+  </section>
+  <!-- All Orders Section -->
+  <section id="allOrdersSection" class="bg-white rounded shadow hidden">
+    <div class="p-4 border-b">
+      <h2 class="text-lg font-semibold">כל ההזמנות</h2>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table id="allOrdersTable" class="w-full text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="p-3 text-left">מספר הזמנה</th>
+            <th class="p-3 text-left">לקוח</th>
+            <th class="p-3 text-left">סטטוס</th>
+            <th class="p-3 text-left">ייצר ביום</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y"></tbody>
+      </table>
+    </div>
+  </section>
+
+
+</main>
+<!-- Approve Order Modal -->
+<div id="approveModal"
+     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white w-96 rounded shadow-lg p-6 max-h-[80vh] overflow-y-auto">
+    <h2 class="text-lg font-bold mb-4">אשר כמות להזמנה</h2>
+
+    <div id="approveItems" class="space-y-2"></div>
+
+    <div class="mt-4 flex justify-end gap-2">
+      <button onclick="closeApproveModal()"
+              class="px-4 py-2 rounded border">לבטל</button>
+      <button onclick="submitApproval()"
+              class="px-4 py-2 rounded bg-green-600 text-white">אשר הזמנה</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay"
+  class="fixed inset-0 bg-black/50 flex flex-col items-center justify-center
+         text-white text-center hidden z-50 transition-opacity duration-300">
+
+  <div class="w-14 h-14 border-4 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
+
+  <p class="text-lg font-semibold">
+    Friendly hold on 🙂<br>
+    We’re loading things for you...
+  </p>
+</div>
+
+<script src="admin_script.js"></script>
+</body>
+
+</html>
