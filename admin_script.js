@@ -1,19 +1,26 @@
 
-const API = 'https://script.google.com/macros/s/AKfycbzFLierDvuyohz3EMe6ocZI2t8Vo5Rx-CFUNcMYK5Kl975Qu8ooOMz8Y2bKG3bKvjY5/exec';
+const API = 'https://script.google.com/macros/s/AKfycbydEy_l0rsC1U9X1kehtKWyTGKvcD527tD_an7mpgzcBbSbR-r1cTkZl0yKNhk4ueK5/exec';
 let ORDER_ITEMS_CACHE = [];
 let INVENTORY_CACHE = [];
 let INVENTORY_BY_BARCODE = {};
 
 
+// const firebaseConfig = {
+//     apiKey: "AIzaSyB3wWzFFTJtgihdHtwrBc3QGUlC0ylDygg",
+//     authDomain: "kaftor-il.firebaseapp.com",
+//     projectId: "kaftor-il",
+//     storageBucket: "kaftor-il.firebasestorage.app",
+//     messagingSenderId: "509331651280",
+//     appId: "1:509331651280:web:02c76afc0dc27c059f3cd5"
+//   };
 const firebaseConfig = {
-    apiKey: "AIzaSyB3wWzFFTJtgihdHtwrBc3QGUlC0ylDygg",
-    authDomain: "kaftor-il.firebaseapp.com",
-    projectId: "kaftor-il",
-    storageBucket: "kaftor-il.firebasestorage.app",
-    messagingSenderId: "509331651280",
-    appId: "1:509331651280:web:02c76afc0dc27c059f3cd5"
-  };
-
+  apiKey: "AIzaSyDQVEpmUGZ-ipTY0D9yzxxW4hoOjPUl1JQ",
+  authDomain: "kaftor-usa.firebaseapp.com",
+  projectId: "kaftor-usa",
+  storageBucket: "kaftor-usa.firebasestorage.app",
+  messagingSenderId: "870840382352",
+  appId: "1:870840382352:web:bec543c4c1e36d4f143915"
+};
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
@@ -245,6 +252,7 @@ function approveOrder(orderId) {
       CURRENT_ORDER_ITEMS.forEach(i => {
         const barcode = i.barcode;
         const name = getProductName(barcode);
+        const price = i.price
         const stock = INVENTORY_BY_BARCODE[barcode]?.stock || 0;
         const qtyThisOrder = i.qty;
         const qtyAllOrders = totalsAcrossOrders[barcode] || 0;
@@ -255,6 +263,7 @@ function approveOrder(orderId) {
           <div class="flex justify-between items-center border-b py-1 gap-2">
             <div class="flex-1">
               <p class="font-medium">${name}</p>
+              <p class="font-medium">${price}</p>
               <p class="text-xs text-gray-500">${barcode}</p>
             </div>
 
@@ -295,13 +304,21 @@ function approveOrder(orderId) {
 function submitApproval() {
   const inputs = document.querySelectorAll("#approveItems input[type=number]");
   const approved = {};
-
+  let total = 0
   inputs.forEach(input => {
     const barcode = input.dataset.barcode;
     const qty = Number(input.value);
     const orderedQty = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.qty || 0;
+    const orderedPrice = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price || "₪ 0";
 
-    if (qty > 0 && qty <= orderedQty) approved[barcode] = qty;
+
+    if (qty > 0 && qty <= orderedQty){ 
+      approved[barcode] = [qty , orderedPrice]
+      let sum = qty * parseFloat(orderedPrice.replace("₪ ", "")).toFixed(2)
+      console.log(sum)
+      total += sum
+      approved["total"] = total
+    };
   });
 
   if (!Object.keys(approved).length) {
@@ -317,7 +334,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: CURRENT_ORDER.customer,
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email}],
       items: [approved]
     })
   })
