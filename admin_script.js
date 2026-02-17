@@ -1,5 +1,5 @@
 
-const API = 'https://script.google.com/macros/s/AKfycbydEy_l0rsC1U9X1kehtKWyTGKvcD527tD_an7mpgzcBbSbR-r1cTkZl0yKNhk4ueK5/exec';
+const API = 'https://script.google.com/macros/s/AKfycbyq25w6-wKAgYJM4U33E9YFwTx1XOLaRd0ONwYyZqcZWMyGjjBi4n-MJBAT1nuCbgir/exec';
 let ORDER_ITEMS_CACHE = [];
 let INVENTORY_CACHE = [];
 let INVENTORY_BY_BARCODE = {};
@@ -111,14 +111,15 @@ function loadOrders() {
 
 
 function loadAllOrders() {
-  showLoading("Loading all orders…");
+  // showLoading("Loading all orders…");
 
   fetch(API + '?action=allOrders')
     .then(res => res.json())
     .then(data => {
       const tbody = document.querySelector('#allOrdersTable tbody');
       tbody.innerHTML = '';
-
+      allOrders = data
+      console.log(allOrders)
       data.forEach(o => {
         tbody.innerHTML += `
           <tr class="hover:bg-gray-50">
@@ -141,7 +142,7 @@ function loadAllOrders() {
         `;
       });
 
-      hideLoading();
+      // hideLoading();
     });
 }
 
@@ -313,11 +314,10 @@ function submitApproval() {
 
 
     if (qty > 0 && qty <= orderedQty){ 
-      approved[barcode] = [qty , orderedPrice]
       let sum = qty * parseFloat(orderedPrice.replace("₪ ", "")).toFixed(2)
+      approved[barcode] = {amount: qty ,price: orderedPrice,total:sum}
       console.log(sum)
       total += sum
-      approved["total"] = total
     };
   });
 
@@ -334,7 +334,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total}],
       items: [approved]
     })
   })
@@ -435,14 +435,15 @@ function approveOrderB(orderId) {
 
 
 showLoading();
-
+let orders = []
+let allOrders = []
 Promise.all([
   // preloadOrderItems(),
   loadOrders(),
   loadInventory()
 ]).finally(hideLoading);
 
-
+loadAllOrders();
 
 function showLoading(message = "Friendly hold on 🙂<br>We’re loading things for you...") {
   const overlay = document.getElementById('loadingOverlay');
@@ -458,18 +459,21 @@ function switchTab(tab) {
   const inventory = document.getElementById('inventorySection');
   const orders = document.getElementById('ordersSection');
   const allOrders = document.getElementById('allOrdersSection');
+  const customers =document.getElementById("customersSection")
 
   const btnInv = document.getElementById('tabInventory');
   const btnOrd = document.getElementById('tabOrders');
   const btnAllOrd = document.getElementById('tabAllOrders');
+  const btnCst = document.getElementById("tabCustomers");
 
   // hide all sections
   inventory.classList.add('hidden');
   orders.classList.add('hidden');
   allOrders.classList.add('hidden');
+  customers.classList.add("hidden");
 
   // reset all buttons
-  [btnInv, btnOrd, btnAllOrd].forEach(btn => {
+  [btnInv, btnOrd,btnCst, btnAllOrd].forEach(btn => {
     btn.classList.remove('bg-blue-600', 'text-white');
     btn.classList.add('bg-gray-200');
   });
@@ -485,7 +489,14 @@ function switchTab(tab) {
     btnAllOrd.classList.add('bg-blue-600', 'text-white');
     btnAllOrd.classList.remove('bg-gray-200');
 
-    loadAllOrders(); // 👈 important
+    // loadAllOrders(); // 👈 important
+  }
+  else if (tab === 'customers') {
+    customers.classList.remove('hidden');
+    btnCst.classList.add('bg-blue-600', 'text-white');
+    btnCst.classList.remove('bg-gray-200');
+
+    // loadAllOrders(); // 👈 important
   }
   else {
     orders.classList.remove('hidden');
@@ -499,6 +510,7 @@ function switchTab(tab) {
 document.getElementById('tabInventory').onclick = () => switchTab('inventory');
 document.getElementById('tabOrders').onclick = () => switchTab('orders');
 document.getElementById('tabAllOrders').onclick = () => switchTab('allorders');
+document.getElementById('tabCustomers').onclick = () => switchTab('customers');
 function toggleOrder(orderId) {
   const row = document.getElementById(`order-${orderId}`);
 
