@@ -28,6 +28,12 @@
       הזמנות
     </button>
 
+    <button id="tabCustomers"
+      class="tab-btn bg-gray-200 px-4 py-2 rounded">
+      לקוחות
+    </button>
+
+
     <button id="tabAllOrders"
       class="tab-btn bg-gray-200 px-4 py-2 rounded">
       כל ההזמנות
@@ -83,6 +89,60 @@
       </table>
     </div>
   </section>
+
+  <!-- Customers Section -->
+  <section id="customersSection" class="bg-white rounded shadow hidden">
+    <div class="p-4 border-b">
+      <h2 class="text-lg font-semibold">לקוחות</h2>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border-b bg-gray-50">
+
+      <div class="bg-white p-4 rounded shadow text-center">
+        <p class="text-gray-500 text-sm">סה"כ לקוחות</p>
+        <p id="customersTotalCount" class="text-xl font-bold">0</p>
+      </div>
+
+      <div class="bg-white p-4 rounded shadow text-center">
+        <p class="text-gray-500 text-sm">סה"כ הזמנות</p>
+        <p id="customersTotalOrders" class="text-xl font-bold">0</p>
+      </div>
+
+      <div class="bg-white p-4 rounded shadow text-center">
+        <p class="text-gray-500 text-sm">סה"כ שולם</p>
+        <p id="customersTotalPaid" class="text-xl font-bold">₪0</p>
+      </div>
+
+      <div class="bg-white p-4 rounded shadow text-center">
+        <p class="text-gray-500 text-sm">סה"כ יתרות</p>
+        <p id="customersTotalBalance" class="text-xl font-bold text-red-600">₪0</p>
+      </div>
+
+    </div>
+
+    <!-- Customers Table -->
+    <div class="overflow-x-auto">
+      <table id="customersTable" class="w-full text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="p-3 text-left">שם</th>
+            <th class="p-3 text-left">מייל</th>
+            <th class="p-3 text-left">טלפון</th>
+            <th class="p-3 text-left">סה"כ הזמנות</th>
+            <th class="p-3 text-left">סה"כ הזמנה</th>
+            <th class="p-3 text-left">שולם</th>
+            <th class="p-3 text-left">יתרה</th>
+            <th class="p-3 text-left">פעולות</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          <!-- JS will render customers here -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- All Orders Section -->
   <section id="allOrdersSection" class="bg-white rounded shadow hidden">
     <div class="p-4 border-b">
