@@ -350,7 +350,7 @@ function submitApproval() {
   .then(res => res.json())
   .then(result => {
     if (!result.success) throw new Error("Approval failed");
-    sendOrderEmail(CURRENT_ORDER.email,approved,orderTotal:total)
+    sendOrderEmail(CURRENT_ORDER.email,approved,total)
     // 2️⃣ Delete original order
     return db.collection("orders").doc(CURRENT_DOC_ID).delete()
       .then(() => {
@@ -822,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
