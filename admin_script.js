@@ -403,7 +403,7 @@ function closeApproveModal() {
 }
 
 async function sendOrderEmail(customerEmail, cartHtml) {
-  const webAppUrl = "https://script.google.com/macros/s/AKfycbydOmSTQUVJ4GoByI4-hVakP7KLHCmwR1aZnW45-La3TYxksDMaXSYurdn5VIy5u5tbbA/exec";
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbwxofYCGvRz2m17AuH8YDoAGrvs3Kbzw59ouCgd2oK0WBYV3rFpXGgUI_DmKQT1T0IVfA/exec";
 
   const payload = {
     email: customerEmail,
@@ -413,7 +413,6 @@ async function sendOrderEmail(customerEmail, cartHtml) {
   try {
     const response = await fetch(webAppUrl, {
       method: 'POST',
-      mode: 'no-cors', // Helps avoid security errors with Google Apps Script
       cache: 'no-cache',
       body: JSON.stringify(payload)
     });
@@ -792,6 +791,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
