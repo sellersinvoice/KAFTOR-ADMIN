@@ -118,8 +118,10 @@ function loadAllOrders() {
     .then(data => {
       const tbody = document.querySelector('#allOrdersTable tbody');
       tbody.innerHTML = '';
-      allOrders = data
-      console.log(allOrders)
+      ordersData = data
+      let test = buildCustomersFromOrders()
+      console.log(test)
+      console.log(ordersData)
       data.forEach(o => {
         tbody.innerHTML += `
           <tr class="hover:bg-gray-50">
@@ -144,6 +146,7 @@ function loadAllOrders() {
 
       // hideLoading();
     });
+    
 }
 
 // function loadOrdersFromFirebase() {
@@ -435,8 +438,9 @@ function approveOrderB(orderId) {
 
 
 showLoading();
-let orders = []
-let allOrders = []
+let orders = [];
+let ordersData = [];
+let paymentsData = [];
 Promise.all([
   // preloadOrderItems(),
   loadOrders(),
@@ -495,8 +499,9 @@ function switchTab(tab) {
     customers.classList.remove('hidden');
     btnCst.classList.add('bg-blue-600', 'text-white');
     btnCst.classList.remove('bg-gray-200');
+    renderCustomers()
 
-    // loadAllOrders(); // 👈 important
+   
   }
   else {
     orders.classList.remove('hidden');
@@ -637,5 +642,128 @@ function toggleOrderDetails(orderId, rowEl) {
 
 function getProductName(barcode) {
   return INVENTORY_BY_BARCODE[barcode]?.name || `Unknown (${barcode})`;
+}
+
+// CUSTUMER ADN KOKRDER SUMMERRY RENDERING LOGIC
+function buildCustomersFromOrders() {
+  const customersMap = {};
+
+  ordersData.forEach(order => {
+    customer = JSON.parse(order.customer)
+    customer = customer[0]
+    const email = customer.email?.toLowerCase()||false;
+    if (!email) return;
+  
+    if (!customersMap[email]) {
+      customersMap[email] = {
+        name: customer.name || "",
+        email: email,
+        phone: customer.phone || "",
+        totalOrders: 0,
+        totalAmount: 0,
+        totalPaid: 0
+      };
+    }
+
+    customersMap[email].totalOrders += 1;
+    customersMap[email].totalAmount += Number(customer.orderTotal || 0);
+  });
+
+  // Add payments
+  paymentsData.forEach(payment => {
+    const email = payment.email?.toLowerCase();
+    if (!customersMap[email]) return;
+
+    customersMap[email].totalPaid += Number(payment.amount || 0);
+  });
+
+  return customersMap;
+}
+
+function renderCustomers() {
+  
+  const tbody = document.querySelector("#customersTable tbody");
+  tbody.innerHTML = "";
+  
+  const customersMap = buildCustomersFromOrders();
+  const customers = Object.values(customersMap);
+  
+  let totalCustomers = customers.length;
+  let totalOrders = 0;
+  let totalPaid = 0;
+  let totalBalance = 0;
+
+  customers.forEach(customer => {
+
+    const balance = customer.totalAmount - customer.totalPaid;
+
+    totalOrders += customer.totalOrders;
+    totalPaid += customer.totalPaid;
+    totalBalance += balance;
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td class="p-3">${customer.name}</td>
+      <td class="p-3">${customer.email}</td>
+      <td class="p-3">${customer.phone}</td>
+      <td class="p-3">${customer.totalOrders}</td>
+      <td class="p-3">₪${customer.totalAmount.toFixed(2)}</td>
+      <td class="p-3 text-green-600">₪${customer.totalPaid.toFixed(2)}</td>
+      <td class="p-3 ${balance > 0 ? 'text-red-600 font-semibold' : ''}">
+        ₪${balance.toFixed(2)}
+      </td>
+      <td class="p-3">
+        <button onclick="openPaymentModal('${customer.email}', '${customer.name}')"
+          class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
+          הוסף תשלום
+        </button>
+      </td>
+    `;
+
+    tbody.appendChild(row);
+  });
+
+  // Update summary cards
+  document.getElementById("customersTotalCount").innerText = totalCustomers;
+  document.getElementById("customersTotalOrders").innerText = totalOrders;
+  document.getElementById("customersTotalPaid").innerText = `₪${totalPaid.toFixed(2)}`;
+  document.getElementById("customersTotalBalance").innerText = `₪${totalBalance.toFixed(2)}`;
+}
+function openPaymentModal(email, name) {
+  document.getElementById("paymentCustomerEmail").value = email;
+  document.getElementById("paymentCustomerName").innerText = name;
+  document.getElementById("paymentAmount").value = "";
+  document.getElementById("paymentNote").value = "";
+
+  document.getElementById("paymentModal").classList.remove("hidden");
+}
+
+function closePaymentModal() {
+  document.getElementById("paymentModal").classList.add("hidden");
+}
+function submitPayment() {
+  const email = document.getElementById("paymentCustomerEmail").value;
+  const amount = Number(document.getElementById("paymentAmount").value);
+  const note = document.getElementById("paymentNote").value;
+
+  if (!amount || amount <= 0) {
+    alert("יש להזין סכום תקין");
+    return;
+  }
+
+  const payment = {
+    email,
+    amount,
+    note,
+    date: new Date().toISOString()
+  };
+
+  console.log("Send this to sheet:", payment);
+
+  // TODO:
+  // sendPaymentToSheet(payment);
+
+  closePaymentModal();
 }
 
