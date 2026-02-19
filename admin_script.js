@@ -350,7 +350,7 @@ function submitApproval() {
   .then(res => res.json())
   .then(result => {
     if (!result.success) throw new Error("Approval failed");
-    sendOrderEmail(CURRENT_ORDER.email,element)
+    sendOrderEmail(CURRENT_ORDER.email,approved,orderTotal:total)
     // 2️⃣ Delete original order
     return db.collection("orders").doc(CURRENT_DOC_ID).delete()
       .then(() => {
@@ -402,12 +402,43 @@ function closeApproveModal() {
   document.getElementById("approveModal").classList.add("hidden");
 }
 
-async function sendOrderEmail(customerEmail, cartHtml) {
+async function sendOrderEmail(customerEmail, cart ,orderTotal) {
+  // Build a clean table for the email
+let emailTable = `
+  <table style="width: 100%; border-collapse: collapse; font-family: sans-serif;">
+    <thead>
+      <tr style="background-color: #f3f4f6; text-align: left;">
+        <th style="padding: 10px; border: 1px solid #ddd;">מוצר</th>
+        <th style="padding: 10px; border: 1px solid #ddd;">כמות</th>
+        <th style="padding: 10px; border: 1px solid #ddd;">מחיר</th>
+      </tr>
+    </thead>
+    <tbody>
+`;
+
+// Loop through your cart items to add rows
+// Assuming 'cartItems' is your array of products
+cartItems.forEach(item => {
+  
+  emailTable += `
+    <tr>
+      <td style="padding: 10px; border: 1px solid #ddd;">${JSON.stringify(item)}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${item.amount}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${item.price}</td>
+    </tr>
+  `;
+});
+
+emailTable += `
+    </tbody>
+  </table>
+  <h3 style="margin-top: 20px;">Total: ${orderTotal}</h3>
+`;
   const webAppUrl = "https://script.google.com/macros/s/AKfycbwxofYCGvRz2m17AuH8YDoAGrvs3Kbzw59ouCgd2oK0WBYV3rFpXGgUI_DmKQT1T0IVfA/exec";
 
   const payload = {
     email: customerEmail,
-    htmlBody: `<h1>Order Summary</h1>${cartHtml}<p>Contact: ${customerEmail}</p>`
+    htmlBody: `<h1>סיכום הזמנה</h1>${emailTable}<p>Contact: ${customerEmail}</p>`
   };
 
   try {
@@ -791,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
