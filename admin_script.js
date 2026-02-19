@@ -343,7 +343,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,total}],
       items: [approved]
     })
   })
@@ -822,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
