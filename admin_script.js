@@ -314,10 +314,15 @@ function submitApproval() {
     const qty = Number(input.value);
     const orderedQty = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.qty || 0;
     const orderedPrice = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price || "₪ 0";
+    let price 0;
+    if (typeof orderedPrice === "string") {
+      price = orderedPrice.replace("₪", "").trim();
+    }
 
+    price = Number(price) || 0;
 
     if (qty > 0 && qty <= orderedQty){ 
-      let sum = qty * parseFloat(orderedPrice.replace("₪ ", "")).toFixed(2)
+      let sum = qty * parseFloat(price).toFixed(2)
       approved[barcode] = {amount: qty ,price: orderedPrice,total:sum}
       console.log(sum)
       total += sum
@@ -766,4 +771,5 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
