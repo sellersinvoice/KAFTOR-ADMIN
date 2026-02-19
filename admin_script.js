@@ -403,7 +403,7 @@ function closeApproveModal() {
 }
 
 async function sendOrderEmail(customerEmail, cartHtml) {
-  const webAppUrl = "https://script.google.com/macros/s/AKfycbwxofYCGvRz2m17AuH8YDoAGrvs3Kbzw59ouCgd2oK0WBYV3rFpXGgUI_DmKQT1T0IVfA/exec";
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbydOmSTQUVJ4GoByI4-hVakP7KLHCmwR1aZnW45-La3TYxksDMaXSYurdn5VIy5u5tbbA/exec";
 
   const payload = {
     email: customerEmail,
@@ -792,6 +792,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
