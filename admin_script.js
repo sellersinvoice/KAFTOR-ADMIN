@@ -314,7 +314,7 @@ function submitApproval() {
     const qty = Number(input.value);
     const orderedQty = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.qty || 0;
     const orderedPrice = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price || "₪ 0";
-    let price 0;
+    let price = 0;
     if (typeof orderedPrice === "string") {
       price = orderedPrice.replace("₪", "").trim();
     }
@@ -771,5 +771,6 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
