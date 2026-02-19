@@ -307,7 +307,7 @@ function approveOrder(orderId) {
 
 function submitApproval() {
   const inputs = document.querySelectorAll("#approveItems input[type=number]");
-  let element = document .getElementById("approveItems")
+  let element = document .getElementById("approveItems").innerHTML
   const approved = {};
   let total = 0
   inputs.forEach(input => {
@@ -791,6 +791,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
