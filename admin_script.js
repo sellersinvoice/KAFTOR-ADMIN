@@ -307,6 +307,7 @@ function approveOrder(orderId) {
 
 function submitApproval() {
   const inputs = document.querySelectorAll("#approveItems input[type=number]");
+  let element = document .getElementById("approveItems")
   const approved = {};
   let total = 0
   inputs.forEach(input => {
@@ -349,7 +350,7 @@ function submitApproval() {
   .then(res => res.json())
   .then(result => {
     if (!result.success) throw new Error("Approval failed");
-
+    sendOrderEmail(CURRENT_ORDER.email,element)
     // 2️⃣ Delete original order
     return db.collection("orders").doc(CURRENT_DOC_ID).delete()
       .then(() => {
@@ -401,7 +402,27 @@ function closeApproveModal() {
   document.getElementById("approveModal").classList.add("hidden");
 }
 
+async function sendOrderEmail(customerEmail, cartHtml) {
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbwxofYCGvRz2m17AuH8YDoAGrvs3Kbzw59ouCgd2oK0WBYV3rFpXGgUI_DmKQT1T0IVfA/exec";
 
+  const payload = {
+    email: customerEmail,
+    htmlBody: `<h1>Order Summary</h1>${cartHtml}<p>Contact: ${customerEmail}</p>`
+  };
+
+  try {
+    const response = await fetch(webAppUrl, {
+      method: 'POST',
+      mode: 'no-cors', // Helps avoid security errors with Google Apps Script
+      cache: 'no-cache',
+      body: JSON.stringify(payload)
+    });
+    
+    alert("Order sent successfully!");
+  } catch (error) {
+    console.error("Email failed:", error);
+  }
+}
 function approveOrderB(orderId) {
   if (!confirm("Approve this order?")) return;
 
@@ -771,6 +792,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
