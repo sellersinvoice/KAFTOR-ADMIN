@@ -445,6 +445,9 @@ emailTable += `
   await fetch(webAppUrl, {
   method: 'POST',
   mode: 'no-cors',
+  headers: {
+    'Content-Type': 'text/plain'
+  },
   body: JSON.stringify(payload)
 });
 
@@ -824,6 +827,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
