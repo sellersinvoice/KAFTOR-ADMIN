@@ -277,7 +277,12 @@ function approveOrder(orderId) {
 
             <input type="number"
                    min="0"
-                   max="${qtyThisOrder}"
+                   oninput="
+                    const item = CURRENT_ORDER_ITEMS.find(i => i.barcode === '${barcode}');
+                    if (item) {
+                      item.qty = Number(this.value) || 0;
+                      console.log('Updated ${barcode} qty to:', item.qty);
+                    }"
                    value="${qtyThisOrder}"
                    data-barcode="${barcode}"
                    class="border rounded w-20 p-1 text-right">
@@ -290,7 +295,7 @@ function approveOrder(orderId) {
         <div class="mt-2 flex items-center gap-2">
           <input type="checkbox" id="partialRemaining">
           <label for="partialRemaining" class="text-sm">
-            Create new order for unapproved quantities
+            צור הזמנה לפריטים הנשארים
           </label>
         </div>
       `;
@@ -318,8 +323,10 @@ function submitApproval() {
     let price = 0;
     if (typeof orderedPrice === "string") {
       price = orderedPrice.replace("₪", "").trim();
+    }else{
+      price = orderedPrice
     }
-
+    console.log(price,"number",Number(price))
     price = Number(price) || 0;
 
     if (qty > 0 && qty <= orderedQty){ 
@@ -405,12 +412,12 @@ function closeApproveModal() {
 async function sendOrderEmail(customerEmail, cart ,orderTotal) {
   // Build a clean table for the email
 let emailTable = `
-  <table style="width: 100%; border-collapse: collapse; font-family: sans-serif;">
+  <table dir="rtl" style="width: 100%; border-collapse: collapse; font-family: sans-serif;text-align: right;">
     <thead>
-      <tr style="background-color: #f3f4f6; text-align: left;">
-        <th style="padding: 10px; border: 1px solid #ddd;">מוצר</th>
-        <th style="padding: 10px; border: 1px solid #ddd;">כמות</th>
-        <th style="padding: 10px; border: 1px solid #ddd;">מחיר</th>
+      <tr style="background-color: #f3f4f6; text-align: right;direction: rtl;">
+        <th style="padding: 10px; border: 1px solid #ddd;text-align: right;">מוצר</th>
+        <th style="padding: 10px; border: 1px solid #ddd;text-align: right;">כמות</th>
+        <th style="padding: 10px; border: 1px solid #ddd;text-align: right;">מחיר</th>
       </tr>
     </thead>
     <tbody>
@@ -422,7 +429,7 @@ for (const barcode in cart){
   const data = cart[barcode];
   emailTable += `
     <tr>
-      <td style="padding: 10px; border: 1px solid #ddd;">${JSON.stringify(barcode)}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${getProductName(barcode)}</td>
       <td style="padding: 10px; border: 1px solid #ddd;">${data.amount}</td>
       <td style="padding: 10px; border: 1px solid #ddd;">${data.price}</td>
     </tr>
@@ -432,7 +439,7 @@ for (const barcode in cart){
 emailTable += `
     </tbody>
   </table>
-  <h3 style="margin-top: 20px;">Total: ${orderTotal}</h3>
+  <h3 style="margin-top: 20px;text-align: right;">סה"כ: ${orderTotal} ₪</h3>
 `;
   const webAppUrl = "https://script.google.com/macros/s/AKfycbz0By59bIOfUjD2WC5BwNzjt8tV8HP06j2YEmfltcfuVBj811OaNafhjRIVG8R8e2Xj4w/exec";
 
@@ -827,7 +834,6 @@ function submitPayment() {
 
   closePaymentModal();
 }
-
 
 
 
