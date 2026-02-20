@@ -434,7 +434,7 @@ emailTable += `
   </table>
   <h3 style="margin-top: 20px;">Total: ${orderTotal}</h3>
 `;
-  const webAppUrl = "https://script.google.com/macros/s/AKfycbwxofYCGvRz2m17AuH8YDoAGrvs3Kbzw59ouCgd2oK0WBYV3rFpXGgUI_DmKQT1T0IVfA/exec";
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbyX_BUa3U_ltWG1jmv0VTJibhBLuCie5Yzj3LIbgsZjqeS3UU7j3507L1B2ubxiHfL10A/exec";
 
   const payload = {
     email: customerEmail,
@@ -822,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
