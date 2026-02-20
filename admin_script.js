@@ -441,17 +441,27 @@ emailTable += `
     htmlBody: `<h1>סיכום הזמנה</h1>${emailTable}<p>Contact: ${customerEmail}</p>`
   };
 
-  try {
-    const response = await fetch(webAppUrl, {
-      method: 'POST',
-      cache: 'no-cache',
-      body: JSON.stringify(payload)
-    });
-    
+ try {
+  const response = await fetch(webAppUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+  console.log(result);
+
+  if (result.status === "success") {
     alert("Order sent successfully!");
-  } catch (error) {
-    console.error("Email failed:", error);
+  } else {
+    alert("Error sending order: " + result.message);
   }
+
+} catch (error) {
+  console.error("Email failed:", error);
+}
 }
 function approveOrderB(orderId) {
   if (!confirm("Approve this order?")) return;
@@ -822,6 +832,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
