@@ -442,22 +442,14 @@ emailTable += `
   };
 
  try {
-  const response = await fetch(webAppUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
+  await fetch(webAppUrl, {
+  method: 'POST',
+  mode: 'no-cors',
+  body: JSON.stringify(payload)
+});
 
-  const result = await response.json();
-  console.log(result);
+alert("Order sent successfully!");
 
-  if (result.status === "success") {
-    alert("Order sent successfully!");
-  } else {
-    alert("Error sending order: " + result.message);
-  }
 
 } catch (error) {
   console.error("Email failed:", error);
@@ -832,6 +824,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
