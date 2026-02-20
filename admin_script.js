@@ -343,7 +343,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,total}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total}],
       items: [approved]
     })
   })
@@ -418,7 +418,7 @@ let emailTable = `
 
 // Loop through your cart items to add rows
 // Assuming 'cartItems' is your array of products
-cartItems.forEach(item => {
+cart.forEach(item => {
   
   emailTable += `
     <tr>
@@ -822,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
