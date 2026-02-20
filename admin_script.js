@@ -418,16 +418,16 @@ let emailTable = `
 
 // Loop through your cart items to add rows
 // Assuming 'cartItems' is your array of products
-cart.forEach(item => {
-  
+for (const barcode in cart){
+  const data = cart[barcode];
   emailTable += `
     <tr>
-      <td style="padding: 10px; border: 1px solid #ddd;">${JSON.stringify(item)}</td>
-      <td style="padding: 10px; border: 1px solid #ddd;">${item.amount}</td>
-      <td style="padding: 10px; border: 1px solid #ddd;">${item.price}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${JSON.stringify(barcode)}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${data.amount}</td>
+      <td style="padding: 10px; border: 1px solid #ddd;">${data.price}</td>
     </tr>
   `;
-});
+};
 
 emailTable += `
     </tbody>
@@ -822,6 +822,7 @@ function submitPayment() {
 
   closePaymentModal();
 }
+
 
 
 
