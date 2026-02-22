@@ -251,7 +251,7 @@ function approveOrder(orderId) {
     .then(totalsAcrossOrders => {
       const container = document.getElementById("approveItems");
       container.innerHTML = '';
-
+      container.innerHTML +=`<p class="font-medium">הזמנה של תאריך : ${CURRENT_ORDER.createdAt.toDate().toLocaleString()}</p>`
       // Render modal rows
       CURRENT_ORDER_ITEMS.forEach(i => {
         const barcode = i.barcode;
@@ -289,7 +289,14 @@ function approveOrder(orderId) {
           </div>
         `;
       });
-
+      container.innerHTML += `
+        <div class="mt-4">
+          <button onclick="openAddItemModal()"
+                  class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">
+            ➕ הוסף פריט להזמנה
+          </button>
+        </div>
+      `;
       // Checkbox for remaining quantities
       container.innerHTML += `
         <div class="mt-2 flex items-center gap-2">
@@ -362,7 +369,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total,comment:comment}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total,comment:comment,createAt :CURRENT_ORDER.createAt}],
       items: [approved]
       
     })
@@ -371,36 +378,36 @@ function submitApproval() {
   .then(result => {
     if (!result.success) throw new Error("Approval failed");
     sendOrderEmail(CURRENT_ORDER.email,approved,total,comment)
-    // 2️⃣ Delete original order
-    return db.collection("orders").doc(CURRENT_DOC_ID).delete()
-      .then(() => {
-        return result; // pass through
-      });
-  })
-  .then(() => {
-    // 3️⃣ Handle remaining quantities if checkbox is checked
-    const createRemaining = document.getElementById("partialRemaining").checked;
-    if (createRemaining) {
-      const remainingItems = CURRENT_ORDER_ITEMS.map(i => {
-        const approvedQty = approved[i.barcode] || 0;
-        const remainingQty = i.qty - approvedQty;
-        if (remainingQty > 0) return { ...i, qty: remainingQty };
-        return null;
-      }).filter(Boolean);
+      // 2️⃣ Delete original order
+      return db.collection("orders").doc(CURRENT_DOC_ID).delete()
+        .then(() => {
+          return result; // pass through
+        });
+    })
+    .then(() => {
+      // 3️⃣ Handle remaining quantities if checkbox is checked
+      const createRemaining = document.getElementById("partialRemaining").checked;
+      if (createRemaining) {
+        const remainingItems = CURRENT_ORDER_ITEMS.map(i => {
+          const approvedQty = approved[i.barcode] || 0;
+          const remainingQty = i.qty - approvedQty;
+          if (remainingQty > 0) return { ...i, qty: remainingQty };
+          return null;
+        }).filter(Boolean);
 
-      if (remainingItems.length) {
-        // create a new order in Firebase
-              db.collection("orders").add({
-        customer: CURRENT_ORDER?.customer ?? "",
-        email: CURRENT_ORDER?.email ?? "",
-        phone: CURRENT_ORDER?.phone ?? "",
-        store: CURRENT_ORDER?.store ?? "",
-        items: remainingItems,
-        status: "PENDING",
-        createdAt: Date.now()
-      });
+        if (remainingItems.length) {
+          // create a new order in Firebase
+                db.collection("orders").add({
+          customer: CURRENT_ORDER?.customer ?? "",
+          email: CURRENT_ORDER?.email ?? "",
+          phone: CURRENT_ORDER?.phone ?? "",
+          store: CURRENT_ORDER?.store ?? "",
+          items: remainingItems,
+          status: "PENDING",
+          createdAt: Date.now()
+        });
 
-      }
+        }
     }
 
     closeApproveModal();
@@ -420,6 +427,95 @@ function submitApproval() {
 
 function closeApproveModal() {
   document.getElementById("approveModal").classList.add("hidden");
+}
+
+function renderInventoryList(searchTerm) {
+
+  const list = document.getElementById("inventoryList");
+  list.innerHTML = '';
+
+  const term = searchTerm.toLowerCase();
+
+  Object.values(INVENTORY_BY_BARCODE).forEach(item => {
+
+    if (
+      !item.name.toLowerCase().includes(term) &&
+      !String(item.barcode).includes(term)
+    ) return;
+
+    list.innerHTML += `
+      <div class="flex justify-between items-center border-b py-2 gap-2">
+
+        <div class="flex-1">
+          <p class="font-medium">${item.name}</p>
+          <p class="text-xs text-gray-500">${item.barcode}</p>
+          <p class="text-xs text-gray-400">מלאי: ${item.stock}</p>
+        </div>
+
+        <input type="number"
+               min="0"
+               placeholder="0"
+               class="border rounded w-20 p-1 text-center"
+               onchange="addItemToCurrentOrder('${item.barcode}', this.value)">
+      </div>
+    `;
+  });
+}
+
+function addItemToCurrentOrder(barcode, qty) {
+  qty = Number(qty) || 0;
+  if (qty <= 0) return;
+
+  const product = INVENTORY_BY_BARCODE[barcode];
+  if (!product) return;
+
+  // Check if already exists in CURRENT_ORDER_ITEMS
+  let existing = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode);
+
+  if (existing) {
+    existing.qty += qty;
+    // Update the input in the modal if it exists
+    const inputEl = document.querySelector(`#approveItems input[data-barcode='${barcode}']`);
+    if (inputEl) inputEl.value = existing.qty;
+  } else {
+    // Add new item to CURRENT_ORDER_ITEMS
+    const newItem = {
+      barcode: barcode,
+      name: product.name,
+      price: product.price,
+      qty: qty
+    };
+    CURRENT_ORDER_ITEMS.push(newItem);
+    CURRENT_APPROVE[barcode] = qty;
+
+    // Append a new row to the modal instead of reloading
+    const container = document.getElementById("approveItems");
+    const stock = product.stock || product.availble || 0;
+    container.innerHTML += `
+      <div class="flex justify-between items-center border-b py-1 gap-2">
+        <div class="flex-1">
+          <p class="font-medium">${newItem.name}</p>
+          <p class="font-medium">${newItem.price}</p>
+          <p class="text-xs text-gray-500">${newItem.barcode}</p>
+        </div>
+        <div class="text-sm w-16 text-center">מלאי: ${stock}</div>
+        <div class="text-sm w-16 text-center">סה"כ להזמנה: ${qty}</div>
+        <div class="text-sm w-16 text-center">סה"כ לכל ההזמנות: 0</div>
+
+        <input type="number"
+               min="0"
+               value="${qty}"
+               data-barcode="${barcode}"
+               class="border rounded w-20 p-1 text-right"
+               oninput="
+                 const item = CURRENT_ORDER_ITEMS.find(i => i.barcode === '${barcode}');
+                 if (item) item.qty = Number(this.value) || 0;
+               ">
+      </div>
+    `;
+  }
+
+  closeAddItemModal();
 }
 
 async function sendOrderEmail(customerEmail, cart ,orderTotal,comment) {
@@ -852,8 +948,28 @@ function submitPayment() {
   closePaymentModal();
 }
 
+function loadInventoryFromFireBase() {
+  return db.collection("Inventory")
+           .doc("masterInventory")
+           .get()
+           .then(doc => {
 
+             if (!doc.exists) {
+               console.error("masterInventory document does not exist");
+               INVENTORY_BY_BARCODE = {};
+               return;
+             }
 
+             // This is already a clean JS object
+             INVENTORY_BY_BARCODE = doc.data();
+
+             console.log("Inventory loaded:", INVENTORY_BY_BARCODE);
+
+           })
+           .catch(err => {
+             console.error("Failed to load inventory:", err);
+           });
+}
 
 
 
