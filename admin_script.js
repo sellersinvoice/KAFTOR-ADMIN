@@ -300,6 +300,17 @@ function approveOrder(orderId) {
         </div>
       `;
 
+      // Comment field
+      container.innerHTML += `
+        <div class="mt-3">
+          <label class="text-sm font-medium block mb-1">הערות להזמנה:</label>
+          <textarea id="approveComment"
+                    class="w-full border rounded p-2 text-sm"
+                    rows="3"
+                    placeholder="כתוב כאן הערות שיצורפו למייל..."></textarea>
+        </div>
+      `;
+
       document.getElementById("approveModal").classList.remove("hidden");
       hideLoading();
     })
@@ -311,6 +322,7 @@ function approveOrder(orderId) {
 }
 
 function submitApproval() {
+  const comment = document.getElementById("approveComment")?.value || "";
   const inputs = document.querySelectorAll("#approveItems input[type=number]");
   let element = document .getElementById("approveItems").innerHTML
   const approved = {};
@@ -350,14 +362,15 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total,comment:comment}],
       items: [approved]
+      
     })
   })
   .then(res => res.json())
   .then(result => {
     if (!result.success) throw new Error("Approval failed");
-    sendOrderEmail(CURRENT_ORDER.email,approved,total)
+    sendOrderEmail(CURRENT_ORDER.email,approved,total,comment)
     // 2️⃣ Delete original order
     return db.collection("orders").doc(CURRENT_DOC_ID).delete()
       .then(() => {
@@ -409,7 +422,7 @@ function closeApproveModal() {
   document.getElementById("approveModal").classList.add("hidden");
 }
 
-async function sendOrderEmail(customerEmail, cart ,orderTotal) {
+async function sendOrderEmail(customerEmail, cart ,orderTotal,comment) {
   // Build a clean table for the email
 let emailTable = `
   <table dir="rtl" style="width: 100%; border-collapse: collapse; font-family: sans-serif;text-align: right;">
@@ -441,11 +454,15 @@ emailTable += `
   </table>
   <h3 style="margin-top: 20px;text-align: right;">סה"כ: ${orderTotal} ₪</h3>
 `;
+
+  if (comment) {
+    emailTable +=   `<p style="margin-top: 20px;text-align: right;"><strong style="margin-top: 20px;text-align: right;">הערות:</strong><br>${comment}</p>`;
+  }
   const webAppUrl = "https://script.google.com/macros/s/AKfycbz0By59bIOfUjD2WC5BwNzjt8tV8HP06j2YEmfltcfuVBj811OaNafhjRIVG8R8e2Xj4w/exec";
 
   const payload = {
     email: customerEmail,
-    htmlBody: `<h1>סיכום הזמנה</h1>${emailTable}<p>Contact: ${customerEmail}</p>`
+    htmlBody: `<h1>סיכום הזמנה</h1>${emailTable}<p>מייל: ${customerEmail}</p>`
   };
 
  try {
@@ -834,7 +851,6 @@ function submitPayment() {
 
   closePaymentModal();
 }
-
 
 
 
