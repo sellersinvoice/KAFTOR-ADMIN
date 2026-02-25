@@ -78,8 +78,8 @@ function loadOrders() {
         tbody.innerHTML += `
           <tr id="order-${doc.id}"
             class="hover:bg-gray-50 cursor-pointer"
-            onclick="toggleOrderDetails('${doc.id}', this)">
-
+            >
+            <td><button onclick="toggleOrderDetails('${doc.id}', 'order-${doc.id}')" class="text-gray-400 hover:text-red-600 transition-colors text-sm"> לפרטי ההזמנה  </button></td>
             <td class="p-3 font-mono text-xs">${doc.id}</td>
             <td class="p-3">${o.customer}</td>
             <td class="p-3">${o.store}</td>
@@ -88,6 +88,12 @@ function loadOrders() {
             <td class="p-3">${o.email}</td>
             <td class="p-3 font-semibold text-orange-600">
               ${o.status}
+            </td>
+            <td>
+              <button onclick="deleteOrder('${doc.id}')"
+                class="text-gray-400 hover:text-red-600 transition-colors text-sm">
+                ביטול הזמנה🗑
+              </button>
             </td>
             <td class="p-3">
               <button
@@ -216,6 +222,30 @@ let CURRENT_APPROVE = {}; // store product totals for this approval
 let CURRENT_ORDER_ITEMS = []; // store items for this order
 let CURRENT_DOC_ID = ""
 let CURRENT_ORDER = null;        // store current order object
+
+function deleteOrder(orderId) {
+
+  if (!confirm("למחוק ההזמנה?")) {
+    return;
+  }
+
+  showLoading("מוחק הזמנה...");
+
+  db.collection("orders")
+    .doc(orderId)
+    .delete()
+    .then(() => {
+      hideLoading();
+      alert("Order deleted successfully");
+      loadOrders();
+    })
+    .catch((error) => {
+      hideLoading();
+      alert("Delete failed");
+      console.error(error);
+    });
+}
+
 
 
 function approveOrder(orderId) {
@@ -780,7 +810,8 @@ function getProductName(barcode) {
 
 
 function toggleOrderDetails(orderId, rowEl) {
-  const existing = rowEl.nextElementSibling;
+  let element = document.getElementById(rowEl)
+  const existing = element.nextElementSibling;
   if (existing && existing.classList.contains('order-details')) {
     existing.remove();
     return;
@@ -816,7 +847,7 @@ function toggleOrderDetails(orderId, rowEl) {
       </tr>
     `;
 
-    rowEl.insertAdjacentHTML('afterend', html);
+    element.insertAdjacentHTML('afterend', html);
   });
 }
 
@@ -970,6 +1001,7 @@ function loadInventoryFromFireBase() {
              console.error("Failed to load inventory:", err);
            });
 }
+
 
 
 
