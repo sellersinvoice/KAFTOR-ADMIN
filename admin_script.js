@@ -808,6 +808,9 @@ function getProductName(barcode) {
   return INVENTORY_BY_BARCODE[barcode]?.name || 'Unknown product';
 }
 
+function getProductCatalog(barcode) {
+  return INVENTORY_BY_BARCODE[barcode]?.catalog || 'Unknown product';
+}
 
 function toggleOrderDetails(orderId, rowEl) {
   let element = document.getElementById(rowEl)
@@ -834,7 +837,10 @@ function toggleOrderDetails(orderId, rowEl) {
                     ${getProductName(i.barcode)}
                   </p>
                   <p class="text-xs text-gray-500">
-                    ${i.barcode}
+                    ${getProductCatalog(i.barcode)}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    ${i.price}
                   </p>
                 </div>
                 <span class="font-semibold">
@@ -930,6 +936,11 @@ function renderCustomers() {
           class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
           הוסף תשלום
         </button>
+
+         <button onclick="openOrdersModal('${customer.email}','${customer.name}')"
+          class="bg-gray-700 text-white px-3 py-1 rounded text-sm">
+          הצג הזמנות
+        </button>
       </td>
     `;
 
@@ -942,6 +953,101 @@ function renderCustomers() {
   document.getElementById("customersTotalPaid").innerText = `₪${totalPaid.toFixed(2)}`;
   document.getElementById("customersTotalBalance").innerText = `₪${totalBalance.toFixed(2)}`;
 }
+
+// modal perr customers 
+function renderCustomerOrders(orders){
+  console.log(orders)
+  const tbody = document.getElementById("customerOrdersTable");
+  tbody.innerHTML = "";
+
+  let total = 0;
+
+  orders.forEach(order => {
+
+    const customer = JSON.parse(order.customer)[0];
+    const orderTotal = customer.orderTotal;
+    
+    total += orderTotal;
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td class="p-2">${new Date(order.created).toLocaleDateString()}</td>
+      <td class="p-2">${order.orderId}</td>
+      <td class="p-2">${order.items.length}</td>
+      <td class="p-2">₪${orderTotal.toFixed(2)}</td>
+
+      <td class="p-2 flex gap-2">
+
+        <button onclick="viewOrderDetails('${order.orderId}')"
+          class="bg-gray-700 text-white px-2 py-1 rounded text-xs">
+          פרטי הזמנה
+        </button>
+
+        <button onclick="openResendEmailModal('${order.orderId}','${customer.email}')"
+          class="bg-blue-600 text-white px-2 py-1 rounded text-xs">
+          שלח מייל
+        </button>
+
+      </td>
+    `;
+
+
+    tbody.appendChild(row);
+
+  });
+
+  document.getElementById("customerOrdersTotal").innerText =
+    `₪${total.toFixed(2)}`;
+}
+
+function filterCustomerOrders(){
+
+  const from = new Date(document.getElementById("ordersDateFrom").value);
+  const to = new Date(document.getElementById("ordersDateTo").value);
+
+  const filtered = currentCustomerOrders.filter(order => {
+
+    const d = new Date(order.created);
+
+    if(from && d < from) return false;
+    if(to && d > to) return false;
+
+    return true;
+
+  });
+
+  renderCustomerOrders(filtered);
+}
+
+function closeOrdersModal(){
+  document.getElementById("ordersModal").classList.add("hidden");
+}
+
+function exportOrdersPDF(){
+  console.log(currentCustomerOrders)
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  let y = 20;
+
+  currentCustomerOrders.forEach(order => {
+
+    const customer = JSON.parse(order.customer)[0];
+
+    doc.text(
+      `${order.orderId} - ₪${customer.orderTotal}`,
+      10,
+      y
+    );
+
+    y += 10;
+
+  });
+
+  doc.save("customer-orders.pdf");
+}
+
 function openPaymentModal(email, name) {
   document.getElementById("paymentCustomerEmail").value = email;
   document.getElementById("paymentCustomerName").innerText = name;
@@ -1001,7 +1107,6 @@ function loadInventoryFromFireBase() {
              console.error("Failed to load inventory:", err);
            });
 }
-
 
 
 
