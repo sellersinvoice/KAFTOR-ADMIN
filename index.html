@@ -504,6 +504,139 @@ function viewOrderDetails(orderId){
 }
 
 </script>
+<!-- order details modal -->
+ <div id="orderDetailsModal"
+class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+
+<div class="bg-white w-[700px] max-h-[90vh] overflow-y-auto rounded shadow">
+
+<div class="p-4 border-b flex justify-between items-center">
+
+<h2 class="text-lg font-bold">
+פרטי הזמנה
+</h2>
+
+<button onclick="closeOrderDetailsModal()"
+class="text-red-600 font-bold">
+✕
+</button>
+
+</div>
+
+
+<div id="orderDetailsContent" class="p-4"></div>
+
+
+</div>
+</div>
+<script>
+  function viewOrderDetailsModal(orderId){
+
+  const order = Object.values(ordersData)
+    .find(o => o.orderId === orderId);
+
+  if(!order) return;
+
+  const customer = JSON.parse(order.customer)[0];
+
+  const itemsObject = order.items[0];
+
+  let itemsHTML = "";
+  let total = 0;
+
+  Object.keys(itemsObject).forEach(barcode => {
+
+    const item = itemsObject[barcode];
+
+    total += item.total;
+
+    itemsHTML += `
+      <tr>
+        <td class="p-2">${getProductName(barcode)}</td>
+        <td class="p-2">${item.amount}</td>
+        <td class="p-2">${item.price}</td>
+        <td class="p-2">₪${item.total}</td>
+      </tr>
+    `;
+
+  });
+
+  const html = `
+
+  <div class="space-y-4">
+
+    <div>
+      <strong>מספר הזמנה:</strong> ${order.orderId}
+    </div>
+
+    <div>
+      <strong>תאריך:</strong>
+      ${new Date(order.created).toLocaleString()}
+    </div>
+
+    <div>
+      <strong>סטטוס:</strong> ${order.status}
+    </div>
+
+    <div class="border-t pt-3">
+
+      <h3 class="font-semibold mb-2">לקוח</h3>
+
+      <div>${customer.name}</div>
+      <div>${customer.email}</div>
+
+    </div>
+
+
+    <div class="border-t pt-3">
+
+      <h3 class="font-semibold mb-2">פריטים</h3>
+
+      <table class="w-full border text-sm">
+
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-2">שם פריט</th>
+            <th class="p-2">כמות</th>
+            <th class="p-2">מחיר</th>
+            <th class="p-2">סה"כ</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${itemsHTML}
+        </tbody>
+
+      </table>
+
+    </div>
+
+
+    <div class="text-right font-bold text-lg border-t pt-3">
+
+      Total: ₪${total}
+
+    </div>
+
+  </div>
+
+  `;
+
+  document.getElementById("orderDetailsContent").innerHTML = html;
+
+  document.getElementById("orderDetailsModal")
+    .classList.remove("hidden");
+
+}
+function closeOrderDetailsModal(){
+
+  document
+    .getElementById("orderDetailsModal")
+    .classList.add("hidden");
+
+}
+
+</script>
 </body>
 
 </html>
