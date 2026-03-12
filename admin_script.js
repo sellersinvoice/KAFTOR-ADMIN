@@ -979,7 +979,7 @@ function renderCustomerOrders(orders){
 
       <td class="p-2 flex gap-2">
 
-        <button onclick="viewOrderDetails('${order.orderId}')"
+        <button onclick="viewOrderDetailsModal('${order.orderId}')"
           class="bg-gray-700 text-white px-2 py-1 rounded text-xs">
           פרטי הזמנה
         </button>
