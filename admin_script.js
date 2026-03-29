@@ -74,11 +74,20 @@ function loadOrders() {
 
       snapshot.forEach(doc => {
         const o = doc.data();
+        console.log(JSON.stringify(doc))
+        const isReturn = o.isReturn === true;
 
+        const rowClass = isReturn
+          ? "bg-red-100 text-red-700"
+          : "hover:bg-gray-50";
+
+        const statusText = isReturn
+          ? "החזרה"
+          : o.status;
         tbody.innerHTML += `
           <tr id="order-${doc.id}"
-            class="hover:bg-gray-50 cursor-pointer"
-            >
+            class="${rowClass} cursor-pointer"
+          >
             <td><button onclick="toggleOrderDetails('${doc.id}', 'order-${doc.id}')" class="text-gray-400 hover:text-red-600 transition-colors text-sm"> לפרטי ההזמנה  </button></td>
             <td class="p-3 font-mono text-xs">${doc.id}</td>
             <td class="p-3">${o.customer}</td>
@@ -86,8 +95,8 @@ function loadOrders() {
             <td class="p-3">${o.address}</td>
             <td class="p-3">${o.phone}</td>
             <td class="p-3">${o.email}</td>
-            <td class="p-3 font-semibold text-orange-600">
-              ${o.status}
+            <td class="p-3 font-semibold ${isReturn ? 'text-red-600' : 'text-orange-600'}">
+              ${statusText}
             </td>
             <td>
               <button onclick="deleteOrder('${doc.id}')"
@@ -98,7 +107,7 @@ function loadOrders() {
             <td class="p-3">
               <button
                 class="px-3 py-1 bg-green-600 text-white rounded"
-                onclick="approveOrder('${doc.id}')">
+                onclick="approveOrder('${doc.id}',${isReturn})">
                 אשר הזמנה
               </button>
             </td>
@@ -248,7 +257,8 @@ function deleteOrder(orderId) {
 
 
 
-function approveOrder(orderId) {
+function approveOrder(orderId,isReturn) {
+  const multiplier = isReturn ? -1 : 1;
   showLoading("Loading order…");
 
   // 1️⃣ Load selected order
@@ -261,7 +271,7 @@ function approveOrder(orderId) {
       CURRENT_ORDER_ITEMS = order.items;
       CURRENT_APPROVE = {};
       CURRENT_DOC_ID = orderId
-
+      CURRENT_ORDER.isReturn =isReturn
       // 2️⃣ Get totals across all pending orders
       return db.collection("orders")
                .where("status", "==", "PENDING")
@@ -297,8 +307,9 @@ function approveOrder(orderId) {
           <div class="flex justify-between items-center border-b py-1 gap-2">
             <div class="flex-1">
               <p class="font-medium">${name}</p>
-              <p class="font-medium">${price}</p>
+              <p class="font-medium">${Number(String(price).replace(/[^\d.-]/g, '')) * multiplier}</p>
               <p class="text-xs text-gray-500">${barcode}</p>
+              <p class="text-xs text-gray-500">${getProductCatalog(barcode)}</p>
             </div>
 
             <div class="text-sm w-16 text-center">מלאי: ${stock}</div>
@@ -310,10 +321,10 @@ function approveOrder(orderId) {
                    oninput="
                     const item = CURRENT_ORDER_ITEMS.find(i => i.barcode === '${barcode}');
                     if (item) {
-                      item.qty = Number(this.value) || 0;
+                      item.qty = Number(this.value ) || 0;
                       console.log('Updated ${barcode} qty to:', item.qty);
                     }"
-                   value="${qtyThisOrder}"
+                   value="${qtyThisOrder * multiplier}"
                    data-barcode="${barcode}"
                    class="border rounded w-20 p-1 text-right">
           </div>
@@ -359,6 +370,8 @@ function approveOrder(orderId) {
 }
 
 function submitApproval() {
+  const multiplier = CURRENT_ORDER.isReturn ? -1 : 1;
+  console.log(CURRENT_ORDER.isReturn)
   const comment = document.getElementById("approveComment")?.value || "";
   const inputs = document.querySelectorAll("#approveItems input[type=number]");
   let element = document .getElementById("approveItems").innerHTML
@@ -366,22 +379,18 @@ function submitApproval() {
   let total = 0
   inputs.forEach(input => {
     const barcode = input.dataset.barcode;
-    const qty = Number(input.value);
+    const qty = Math.abs(Number(input.value)) || 0;
     const orderedQty = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.qty || 0;
     const orderedPrice = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price || "₪ 0";
-    let price = 0;
-    if (typeof orderedPrice === "string") {
-      price = orderedPrice.replace("₪", "").trim();
-    }else{
-      price = orderedPrice
-    }
-    console.log(price,"number",Number(price))
-    price = Number(price) || 0;
-
-    if (qty > 0 && qty <= orderedQty){ 
-      let sum = qty * parseFloat(price).toFixed(2)
-      approved[barcode] = {amount: qty ,price: orderedPrice,total:sum}
-      console.log(sum)
+    const price = Number(String(orderedPrice).replace(/[^\d.-]/g, '')) || 0;
+    if (qty > 0 && qty <= orderedQty){
+      let sum = qty * price * multiplier;
+      approved[barcode] = {
+        amount: qty * multiplier,
+        price: price,
+        total: sum
+      };
+      console.log(approved)
       total += sum
     };
   });
@@ -399,7 +408,7 @@ function submitApproval() {
     body: JSON.stringify({
       action: 'approveFirebaseOrder',
       orderId: CURRENT_DOC_ID,
-      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total,comment:comment,createAt :CURRENT_ORDER.createAt}],
+      customer: [{name:CURRENT_ORDER.customer,email:CURRENT_ORDER.email,orderTotal:total,comment:comment,createAt :CURRENT_ORDER.createAt,isReturn:CURRENT_ORDER.isReturn}],
       items: [approved]
       
     })
