@@ -1,6 +1,6 @@
 
 // const API = 'https://script.google.com/macros/s/AKfycbyq25w6-wKAgYJM4U33E9YFwTx1XOLaRd0ONwYyZqcZWMyGjjBi4n-MJBAT1nuCbgir/exec';
-const API ='https://script.google.com/macros/s/AKfycbwK1ANE_YzsYiV-HRJQ6RXHLkbq407hHEQW4zB4q39_IqC5MeIDLaG6fk8nqNlvtgow/exec'
+const API ='https://script.google.com/macros/s/AKfycby3ersEf7mYnjqH7zLqsVU8jwHCOpLnWMAhmDglC9YRL3-cMHdXVKZbGx_K9FmbIeQU/exec'
 let ORDER_ITEMS_CACHE = [];
 let INVENTORY_CACHE = [];
 let INVENTORY_BY_BARCODE = {};
@@ -126,43 +126,43 @@ function loadOrders() {
 }
 
 
-function loadAllOrders() {
-  // showLoading("Loading all orders…");
-
-  fetch(API + '?action=allOrders')
-    .then(res => res.json())
-    .then(data => {
-      const tbody = document.querySelector('#allOrdersTable tbody');
-      tbody.innerHTML = '';
-      ordersData = data
-      let test = buildCustomersFromOrders()
-      console.log(test)
-      console.log(ordersData)
-      data.forEach(o => {
-        tbody.innerHTML += `
-          <tr class="hover:bg-gray-50">
-            <td class="p-3">${o.orderId}</td>
-            <td class="p-3">${o.customer}</td>
-            <td class="p-3">${o.store}</td>
-            <td class="p-3">${o.address}</td>
-            <td class="p-3">${o.phone}</td>
-            <td class="p-3">${o.email}</td>
-            <td class="p-3">
-              <span class="px-2 py-1 rounded text-xs font-semibold
-                ${o.status === 'APPROVED'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-yellow-100 text-yellow-700'}">
-                ${o.status}
-              </span>
-            </td>
-            <td class="p-3">${new Date(o.created).toLocaleString()}</td>
-          </tr>
-        `;
-      });
-
-      // hideLoading();
-    });
+async function loadAllOrders() {
+  try {
+    // 1. Fetch orders
+    const res = await fetch(API + '?action=allOrders');
+    const data = await res.json();
     
+    const tbody = document.querySelector('#allOrdersTable tbody');
+    tbody.innerHTML = '';
+    
+    // 2. This now works because the parent is async!
+    ordersData = data;
+    paymentsData = await fetchPayments(); 
+    
+    let test = buildCustomersFromOrders();
+    console.log(test);
+    console.log(ordersData);
+
+    // 3. Render rows
+    data.forEach(o => {
+      tbody.innerHTML += `
+        <tr class="hover:bg-gray-50">
+          <td class="p-3">${o.orderId}</td>
+          <td class="p-3">${o.customer}</td>
+          <td class="p-3">
+            <span class="px-2 py-1 rounded text-xs font-semibold
+              ${o.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+              ${o.status}
+            </span>
+          </td>
+          <td class="p-3">${new Date(o.created).toLocaleString()}</td>
+        </tr>
+      `;
+    });
+
+  } catch (error) {
+    console.error("Error loading data:", error);
+  }
 }
 
 async function fetchPayments() {
@@ -884,7 +884,7 @@ function getProductName(barcode) {
 }
 
 // CUSTUMER ADN KOKRDER SUMMERRY RENDERING LOGIC
-async function buildCustomersFromOrders() {
+function buildCustomersFromOrders() {
   const customersMap = {};
 
   ordersData.forEach(order => {
@@ -907,7 +907,6 @@ async function buildCustomersFromOrders() {
     customersMap[email].totalOrders += 1;
     customersMap[email].totalAmount += Number(customer.orderTotal || 0);
   });
-  paymentsData = await fetchPayments()
   // Add payments
   paymentsData.forEach(payment => {
     const email = payment.email?.toLowerCase();
@@ -915,7 +914,7 @@ async function buildCustomersFromOrders() {
 
     customersMap[email].totalPaid += Number(payment.amount || 0);
   });
-
+  console.log(customersMap)
   return customersMap;
 }
 
