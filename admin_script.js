@@ -1,5 +1,6 @@
 
-const API = 'https://script.google.com/macros/s/AKfycbyq25w6-wKAgYJM4U33E9YFwTx1XOLaRd0ONwYyZqcZWMyGjjBi4n-MJBAT1nuCbgir/exec';
+// const API = 'https://script.google.com/macros/s/AKfycbyq25w6-wKAgYJM4U33E9YFwTx1XOLaRd0ONwYyZqcZWMyGjjBi4n-MJBAT1nuCbgir/exec';
+const API ='https://script.google.com/macros/s/AKfycbwK1ANE_YzsYiV-HRJQ6RXHLkbq407hHEQW4zB4q39_IqC5MeIDLaG6fk8nqNlvtgow/exec'
 let ORDER_ITEMS_CACHE = [];
 let INVENTORY_CACHE = [];
 let INVENTORY_BY_BARCODE = {};
@@ -162,6 +163,17 @@ function loadAllOrders() {
       // hideLoading();
     });
     
+}
+
+async function fetchPayments() {
+  try {
+    const response = await fetch(`${API}?action=payments`);
+    const payments = await response.json();
+    console.log("All Payments:", payments);
+    return payments;
+  } catch (error) {
+    console.error("Failed to fetch payments", error);
+  }
 }
 
 // function loadOrdersFromFirebase() {
@@ -872,7 +884,7 @@ function getProductName(barcode) {
 }
 
 // CUSTUMER ADN KOKRDER SUMMERRY RENDERING LOGIC
-function buildCustomersFromOrders() {
+async function buildCustomersFromOrders() {
   const customersMap = {};
 
   ordersData.forEach(order => {
@@ -895,7 +907,7 @@ function buildCustomersFromOrders() {
     customersMap[email].totalOrders += 1;
     customersMap[email].totalAmount += Number(customer.orderTotal || 0);
   });
-
+  paymentsData = await fetchPayments()
   // Add payments
   paymentsData.forEach(payment => {
     const email = payment.email?.toLowerCase();
@@ -912,7 +924,7 @@ function renderCustomers() {
   const tbody = document.querySelector("#customersTable tbody");
   tbody.innerHTML = "";
   
-  const customersMap = buildCustomersFromOrders();
+  const customersMap =  buildCustomersFromOrders();
   const customers = Object.values(customersMap);
   
   let totalCustomers = customers.length;
@@ -1069,11 +1081,11 @@ function openPaymentModal(email, name) {
 function closePaymentModal() {
   document.getElementById("paymentModal").classList.add("hidden");
 }
-function submitPayment() {
+async function submitPayment() {
   const email = document.getElementById("paymentCustomerEmail").value;
   const amount = Number(document.getElementById("paymentAmount").value);
   const note = document.getElementById("paymentNote").value;
-
+    console.log('hihihih')
   if (!amount || amount <= 0) {
     alert("יש להזין סכום תקין");
     return;
@@ -1085,9 +1097,29 @@ function submitPayment() {
     note,
     date: new Date().toISOString()
   };
+  
 
   console.log("Send this to sheet:", payment);
+  try {
+    const response = await fetch(API, {
+        method: 'POST',
+        body: JSON.stringify({
+        action: 'sendPayment',
+        payment: payment // Ensure this object contains amount, orderId, etc.
+        })
+    });
 
+    const result = await response.json();
+
+    if (result.success) {
+        alert("נשלח בהצלחה!");
+    } else {
+        alert("שגיאה: " + result.error);
+    }
+    } catch (error) {
+    console.error("נכשל", error);
+    alert("תקלת תקשורת");
+    }
   // TODO:
   // sendPaymentToSheet(payment);
 
@@ -1116,7 +1148,6 @@ function loadInventoryFromFireBase() {
              console.error("Failed to load inventory:", err);
            });
 }
-
 
 
 
