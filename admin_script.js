@@ -605,7 +605,8 @@ emailTable += `
   if (comment) {
     emailTable +=   `<p style="margin-top: 20px;text-align: right;"><strong style="margin-top: 20px;text-align: right;">הערות:</strong><br>${comment}</p>`;
   }
-  const webAppUrl = "https://script.google.com/macros/s/AKfycbz0By59bIOfUjD2WC5BwNzjt8tV8HP06j2YEmfltcfuVBj811OaNafhjRIVG8R8e2Xj4w/exec";
+  // const webAppUrl = "https://script.google.com/macros/s/AKfycbz0By59bIOfUjD2WC5BwNzjt8tV8HP06j2YEmfltcfuVBj811OaNafhjRIVG8R8e2Xj4w/exec";
+  const webAppUrl ="https://script.google.com/macros/s/AKfycbw25OR24sMnKnEe8V7UfjTQumLRf0PwlO4Z0Ri3eljKm0fyy5B-PAcEEt3yI1VVhK9_/exec"
 
   const payload = {
     email: customerEmail,
