@@ -319,7 +319,16 @@ function approveOrder(orderId,isReturn) {
           <div class="flex justify-between items-center border-b py-1 gap-2">
             <div class="flex-1">
               <p class="font-medium">${name}</p>
-              <p class="font-medium">${Number(String(price).replace(/[^\d.-]/g, '')) * multiplier}</p>
+              <input type="number"
+              step="0.01"
+              value="${Number(String(price).replace(/[^\d.-]/g, ''))}"
+              class="border rounded w-24 p-1 text-right"
+              oninput="
+                const item = CURRENT_ORDER_ITEMS.find(i => i.barcode === '${barcode}');
+                if (item) {
+                  item.price = Number(this.value) || 0;
+                  console.log('Updated ${barcode} price to:', item.price);
+                }">
               <p class="text-xs text-gray-500">${barcode}</p>
               <p class="text-xs text-gray-500">${getProductCatalog(barcode)}</p>
             </div>
@@ -393,13 +402,14 @@ function submitApproval() {
     const barcode = input.dataset.barcode;
     const qty = Math.abs(Number(input.value)) || 0;
     const orderedQty = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.qty || 0;
-    const orderedPrice = CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price || "₪ 0";
-    const price = Number(String(orderedPrice).replace(/[^\d.-]/g, '')) || 0;
+    const price = Number(
+      CURRENT_ORDER_ITEMS.find(i => i.barcode === barcode)?.price
+    ) || 0;
     if (qty > 0 && qty <= orderedQty){
-      let sum = qty * price * multiplier;
+      let sum = Number((qty * price * multiplier).toFixed(2));
       approved[barcode] = {
         amount: qty * multiplier,
-        price: price,
+        price: Number(price.toFixed(2)),
         total: sum
       };
       console.log(approved)
