@@ -40,6 +40,10 @@
       class="tab-btn bg-gray-200 px-4 py-2 rounded">
       כל ההזמנות
     </button>
+    <button id="tabUrls"
+      class="tab-btn bg-gray-200 px-4 py-2 rounded">
+      URLs
+    </button>
   </div>
 
   
@@ -163,6 +167,33 @@
         </thead>
         <tbody class="divide-y"></tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- URLs Section -->
+  <section id="urlsSection" class="bg-white rounded shadow hidden">
+    <div class="p-4 border-b">
+      <h2 class="text-lg font-semibold">Upload URLs</h2>
+    </div>
+
+    <div class="p-4 space-y-4">
+      <textarea
+        id="urlsInput"
+        rows="8"
+        placeholder="Paste one or more URLs here, one per line"
+        class="border rounded w-full p-3 text-left"
+        dir="ltr"></textarea>
+
+      <div class="flex items-center gap-3">
+        <button
+          id="uploadUrlsBtn"
+          onclick="uploadUrlsToFirebase()"
+          class="bg-blue-600 text-white px-4 py-2 rounded">
+          Upload to Firebase
+        </button>
+
+        <p id="urlsUploadStatus" class="text-sm text-gray-500"></p>
+      </div>
     </div>
   </section>
 
@@ -341,16 +372,18 @@ function closeAddItemModal() {
 <script>
   let currentCustomerOrders = [];
 
-    function openOrdersModal(email, name){
+    async function openOrdersModal(email, name){
       document.getElementById("ordersModal").classList.remove("hidden");
       document.getElementById("ordersModalTitle").innerText = `Orders - ${name}`;
      
       const orders = ordersData // your orders object
+      await loadCustomerAliases();
+      const primaryEmail = resolveCustomerEmail(email);
 
       currentCustomerOrders = orders.filter(order => {
         const customer = JSON.parse(order.customer)[0];
         
-        return customer.email.toLowerCase() == email.toLowerCase();
+        return resolveCustomerEmail(customer.email) == primaryEmail;
       });
 
       renderCustomerOrders(currentCustomerOrders);
@@ -635,6 +668,88 @@ function closeOrderDetailsModal(){
     .classList.add("hidden");
 
 }
+
+</script>
+<!-- merge customer modal -->
+ <div id="mergeCustomerModal"
+     class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+
+  <div class="bg-white rounded-lg p-6 w-[500px] max-w-full">
+
+    <h2 class="text-xl font-bold mb-4">מיזוג לקוחות</h2>
+
+    <div class="mb-4">
+      <label class="block text-sm mb-1">לקוח ראשי</label>
+      <input id="mergePrimary"
+             class="w-full border rounded p-2 bg-gray-100"
+             readonly>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-sm mb-1">אימייל למיזוג</label>
+
+      <select id="mergeSecondary"
+              class="w-full border rounded p-2">
+      </select>
+    </div>
+
+    <div class="flex justify-end gap-2">
+      <button onclick="closeMergeCustomerModal()"
+              class="bg-gray-300 px-4 py-2 rounded">
+        ביטול
+      </button>
+
+      <button onclick="submitCustomerMerge()"
+              class="bg-purple-600 text-white px-4 py-2 rounded">
+        מיזוג
+      </button>
+    </div>
+
+  </div>
+</div>
+<script>
+  let CURRENT_MERGE_PRIMARY = null;
+
+async function openMergeCustomerModal(email, name) {
+
+  CURRENT_MERGE_PRIMARY = email;
+
+  document.getElementById("mergePrimary").value =
+    `${name} (${email})`;
+
+  const select = document.getElementById("mergeSecondary");
+
+  select.innerHTML = "";
+
+  const customersMap = await buildCustomersFromOrders();
+  const customers = Object.values(customersMap);
+
+  customers.forEach(customer => {
+
+    if (customer.email === email) return;
+
+    select.innerHTML += `
+      <option value="${customer.email}">
+        ${customer.name} (${customer.email})
+      </option>
+    `;
+  });
+
+  document
+    .getElementById("mergeCustomerModal")
+    .classList
+    .remove("hidden");
+}
+
+function closeMergeCustomerModal() {
+
+  document
+    .getElementById("mergeCustomerModal")
+    .classList
+    .add("hidden");
+}
+
+
 
 </script>
 </body>
