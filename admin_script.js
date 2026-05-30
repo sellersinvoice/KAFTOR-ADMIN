@@ -707,20 +707,23 @@ function switchTab(tab) {
   const orders = document.getElementById('ordersSection');
   const allOrders = document.getElementById('allOrdersSection');
   const customers =document.getElementById("customersSection")
+  const urls = document.getElementById("urlsSection");
 
   const btnInv = document.getElementById('tabInventory');
   const btnOrd = document.getElementById('tabOrders');
   const btnAllOrd = document.getElementById('tabAllOrders');
   const btnCst = document.getElementById("tabCustomers");
+  const btnUrls = document.getElementById("tabUrls");
 
   // hide all sections
   inventory.classList.add('hidden');
   orders.classList.add('hidden');
   allOrders.classList.add('hidden');
   customers.classList.add("hidden");
+  urls.classList.add("hidden");
 
   // reset all buttons
-  [btnInv, btnOrd,btnCst, btnAllOrd].forEach(btn => {
+  [btnInv, btnOrd,btnCst, btnAllOrd, btnUrls].forEach(btn => {
     btn.classList.remove('bg-blue-600', 'text-white');
     btn.classList.add('bg-gray-200');
   });
@@ -746,6 +749,11 @@ function switchTab(tab) {
 
    
   }
+  else if (tab === 'urls') {
+    urls.classList.remove('hidden');
+    btnUrls.classList.add('bg-blue-600', 'text-white');
+    btnUrls.classList.remove('bg-gray-200');
+  }
   else {
     orders.classList.remove('hidden');
     btnOrd.classList.add('bg-blue-600', 'text-white');
@@ -759,6 +767,62 @@ document.getElementById('tabInventory').onclick = () => switchTab('inventory');
 document.getElementById('tabOrders').onclick = () => switchTab('orders');
 document.getElementById('tabAllOrders').onclick = () => switchTab('allorders');
 document.getElementById('tabCustomers').onclick = () => switchTab('customers');
+document.getElementById('tabUrls').onclick = () => switchTab('urls');
+
+async function uploadUrlsToFirebase() {
+  const input = document.getElementById("urlsInput");
+  const status = document.getElementById("urlsUploadStatus");
+  const button = document.getElementById("uploadUrlsBtn");
+
+  const urls = input.value
+    .split(/[\n,]+/)
+    .map(url => url.trim())
+    .filter(Boolean);
+
+  const invalidUrl = urls.find(url => {
+    try {
+      new URL(url);
+      return false;
+    } catch (error) {
+      return true;
+    }
+  });
+
+  if (!urls.length) {
+    status.innerText = "Paste at least one URL.";
+    status.className = "text-sm text-red-600";
+    return;
+  }
+
+  if (invalidUrl) {
+    status.innerText = `Invalid URL: ${invalidUrl}`;
+    status.className = "text-sm text-red-600";
+    return;
+  }
+
+  button.disabled = true;
+  button.classList.add("opacity-60", "cursor-not-allowed");
+  status.innerText = "Uploading...";
+  status.className = "text-sm text-gray-500";
+
+  try {
+    await db.collection("uploadedUrls").doc("urls").set({
+      urls: firebase.firestore.FieldValue.arrayUnion(...urls),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    input.value = "";
+    status.innerText = `Uploaded ${urls.length} URL${urls.length === 1 ? "" : "s"} to Firebase.`;
+    status.className = "text-sm text-green-600";
+  } catch (error) {
+    console.error("Failed to upload URLs:", error);
+    status.innerText = "Failed to upload URLs.";
+    status.className = "text-sm text-red-600";
+  } finally {
+    button.disabled = false;
+    button.classList.remove("opacity-60", "cursor-not-allowed");
+  }
+}
 function toggleOrder(orderId) {
   const row = document.getElementById(`order-${orderId}`);
 
@@ -893,18 +957,54 @@ function toggleOrderDetails(orderId, rowEl) {
 function getProductName(barcode) {
   return INVENTORY_BY_BARCODE[barcode]?.name || `Unknown (${barcode})`;
 }
+let CUSTOMER_ALIASES = {};
+async function loadCustomerAliases() {
 
+  CUSTOMER_ALIASES = {};
+
+  const snapshot =
+    await db.collection("customerAliases").get();
+
+  snapshot.forEach(doc => {
+
+    CUSTOMER_ALIASES[doc.id.toLowerCase()] =
+      doc.data().primary.toLowerCase();
+  });
+
+  console.log("Loaded aliases:", CUSTOMER_ALIASES);
+}
+
+function resolveCustomerEmail(email) {
+
+  if (!email) return "";
+
+  email = email.toLowerCase();
+
+  return CUSTOMER_ALIASES[email] || email;
+}
 // CUSTUMER ADN KOKRDER SUMMERRY RENDERING LOGIC
-function buildCustomersFromOrders() {
+async function buildCustomersFromOrders() {
+
+  await loadCustomerAliases();
+
   const customersMap = {};
 
+  // ORDERS
   ordersData.forEach(order => {
-    customer = JSON.parse(order.customer)
-    customer = customer[0]
-    const email = customer.email?.toLowerCase()||false;
+
+    let customer = JSON.parse(order.customer);
+    customer = customer[0];
+
+    let email =
+      customer.email?.toLowerCase() || false;
+
     if (!email) return;
-  
+
+    // 🔥 resolve alias
+    email = resolveCustomerEmail(email);
+
     if (!customersMap[email]) {
+
       customersMap[email] = {
         name: customer.name || "",
         email: email,
@@ -916,25 +1016,39 @@ function buildCustomersFromOrders() {
     }
 
     customersMap[email].totalOrders += 1;
-    customersMap[email].totalAmount += Number(customer.orderTotal || 0);
+
+    customersMap[email].totalAmount +=
+      Number(customer.orderTotal || 0);
   });
-  // Add payments
+
+  // PAYMENTS
   paymentsData.forEach(payment => {
-    const email = payment.email?.toLowerCase();
+
+    let email =
+      payment.email?.toLowerCase();
+
+    if (!email) return;
+
+    // 🔥 resolve alias
+    email = resolveCustomerEmail(email);
+
     if (!customersMap[email]) return;
 
-    customersMap[email].totalPaid += Number(payment.amount || 0);
+    customersMap[email].totalPaid +=
+      Number(payment.amount || 0);
   });
-  console.log(customersMap)
+
+  console.log(customersMap);
+
   return customersMap;
 }
 
-function renderCustomers() {
+async function renderCustomers() {
   
   const tbody = document.querySelector("#customersTable tbody");
   tbody.innerHTML = "";
   
-  const customersMap =  buildCustomersFromOrders();
+  const customersMap =  await buildCustomersFromOrders();
   const customers = Object.values(customersMap);
   
   let totalCustomers = customers.length;
@@ -971,6 +1085,10 @@ function renderCustomers() {
          <button onclick="openOrdersModal('${customer.email}','${customer.name}')"
           class="bg-gray-700 text-white px-3 py-1 rounded text-sm">
           הצג הזמנות
+        </button>
+        <button onclick="openMergeCustomerModal('${customer.email}','${customer.name}')"
+          class="bg-purple-600 text-white px-3 py-1 rounded text-sm">
+          מיזוג לקוח
         </button>
       </td>
     `;
@@ -1134,6 +1252,50 @@ async function submitPayment() {
   // sendPaymentToSheet(payment);
 
   closePaymentModal();
+}
+
+function submitCustomerMerge() {
+
+  const secondary =
+    document.getElementById("mergeSecondary").value;
+
+  if (!secondary) {
+    alert("בחר לקוח למיזוג");
+    return;
+  }
+
+  if (secondary === CURRENT_MERGE_PRIMARY) {
+    alert("לא ניתן למזג את אותו לקוח");
+    return;
+  }
+
+  showLoading("Merging customers...");
+
+  db.collection("customerAliases")
+    .doc(secondary.toLowerCase())
+    .set({
+      primary: CURRENT_MERGE_PRIMARY.toLowerCase(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    .then(() => {
+
+      hideLoading();
+
+      alert("לקוחות מוזגו בהצלחה");
+
+      closeMergeCustomerModal();
+
+      renderCustomers();
+
+    })
+    .catch(err => {
+
+      hideLoading();
+
+      console.error(err);
+
+      alert("שגיאה במיזוג לקוחות");
+    });
 }
 
 function loadInventoryFromFireBase() {
