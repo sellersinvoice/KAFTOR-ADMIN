@@ -194,6 +194,18 @@
 
         <p id="urlsUploadStatus" class="text-sm text-gray-500"></p>
       </div>
+
+      <div class="border-t pt-4 space-y-3">
+        <input
+          id="urlsSearch"
+          type="text"
+          placeholder="Search URLs"
+          oninput="renderUploadedUrls()"
+          class="border rounded w-full p-2 text-left"
+          dir="ltr">
+
+        <div id="urlsList" class="space-y-2"></div>
+      </div>
     </div>
   </section>
 
