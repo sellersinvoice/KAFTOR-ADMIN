@@ -4,6 +4,7 @@ const API ='https://script.google.com/macros/s/AKfycby3ersEf7mYnjqH7zLqsVU8jwHCO
 let ORDER_ITEMS_CACHE = [];
 let INVENTORY_CACHE = [];
 let INVENTORY_BY_BARCODE = {};
+let UPLOADED_URLS_CACHE = [];
 
 
 // const firebaseConfig = {
@@ -753,6 +754,7 @@ function switchTab(tab) {
     urls.classList.remove('hidden');
     btnUrls.classList.add('bg-blue-600', 'text-white');
     btnUrls.classList.remove('bg-gray-200');
+    loadUploadedUrls();
   }
   else {
     orders.classList.remove('hidden');
@@ -814,6 +816,7 @@ async function uploadUrlsToFirebase() {
     input.value = "";
     status.innerText = `Uploaded ${urls.length} URL${urls.length === 1 ? "" : "s"} to Firebase.`;
     status.className = "text-sm text-green-600";
+    await loadUploadedUrls();
   } catch (error) {
     console.error("Failed to upload URLs:", error);
     status.innerText = "Failed to upload URLs.";
@@ -822,6 +825,121 @@ async function uploadUrlsToFirebase() {
     button.disabled = false;
     button.classList.remove("opacity-60", "cursor-not-allowed");
   }
+}
+
+async function loadUploadedUrls() {
+  const list = document.getElementById("urlsList");
+  if (!list) return;
+
+  list.innerHTML = `<p class="text-sm text-gray-500">Loading URLs...</p>`;
+
+  try {
+    const doc = await db.collection("uploadedUrls").doc("urls").get();
+    UPLOADED_URLS_CACHE = doc.exists ? (doc.data().urls || []) : [];
+    renderUploadedUrls();
+  } catch (error) {
+    console.error("Failed to load URLs:", error);
+    list.innerHTML = `<p class="text-sm text-red-600">Failed to load URLs.</p>`;
+  }
+}
+
+function renderUploadedUrls() {
+  const list = document.getElementById("urlsList");
+  const search = (document.getElementById("urlsSearch")?.value || "").toLowerCase();
+
+  if (!list) return;
+
+  const urls = UPLOADED_URLS_CACHE
+    .map((url, index) => ({ url, index }))
+    .filter(item => item.url.toLowerCase().includes(search));
+
+  if (!urls.length) {
+    list.innerHTML = `<p class="text-sm text-gray-500">No URLs found.</p>`;
+    return;
+  }
+
+  list.innerHTML = urls.map(item => `
+    <div class="border rounded p-3 flex gap-2 items-center">
+      <input
+        id="urlEdit-${item.index}"
+        value="${escapeHtml(item.url)}"
+        class="border rounded p-2 flex-1 text-left"
+        dir="ltr">
+
+      <button
+        onclick="replaceUploadedUrl(${item.index})"
+        class="bg-green-600 text-white px-3 py-2 rounded text-sm">
+        Save
+      </button>
+
+      <button
+        onclick="deleteUploadedUrl(${item.index})"
+        class="bg-red-600 text-white px-3 py-2 rounded text-sm">
+        Delete
+      </button>
+    </div>
+  `).join("");
+}
+
+async function replaceUploadedUrl(index) {
+  const input = document.getElementById(`urlEdit-${index}`);
+  const status = document.getElementById("urlsUploadStatus");
+  const newUrl = input.value.trim();
+
+  if (!newUrl) {
+    status.innerText = "URL cannot be empty.";
+    status.className = "text-sm text-red-600";
+    return;
+  }
+
+  try {
+    new URL(newUrl);
+  } catch (error) {
+    status.innerText = `Invalid URL: ${newUrl}`;
+    status.className = "text-sm text-red-600";
+    return;
+  }
+
+  const urls = [...UPLOADED_URLS_CACHE];
+  urls[index] = newUrl;
+
+  await saveUploadedUrls(urls, "URL updated.");
+}
+
+async function deleteUploadedUrl(index) {
+  if (!confirm("Delete this URL?")) return;
+
+  const urls = UPLOADED_URLS_CACHE.filter((_, itemIndex) => itemIndex !== index);
+  await saveUploadedUrls(urls, "URL deleted.");
+}
+
+async function saveUploadedUrls(urls, message) {
+  const status = document.getElementById("urlsUploadStatus");
+
+  try {
+    await db.collection("uploadedUrls").doc("urls").set({
+      urls,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    UPLOADED_URLS_CACHE = urls;
+    renderUploadedUrls();
+    status.innerText = message;
+    status.className = "text-sm text-green-600";
+  } catch (error) {
+    console.error("Failed to save URLs:", error);
+    status.innerText = "Failed to save URLs.";
+    status.className = "text-sm text-red-600";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 function toggleOrder(orderId) {
   const row = document.getElementById(`order-${orderId}`);
