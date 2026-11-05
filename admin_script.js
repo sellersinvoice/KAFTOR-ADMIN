@@ -1291,28 +1291,153 @@ function closeOrdersModal(){
   document.getElementById("ordersModal").classList.add("hidden");
 }
 
-function exportOrdersPDF(){
-  console.log(currentCustomerOrders)
+// Render Hebrew with the browser's bidi/font engine before embedding each page.
+// This avoids jsPDF's built-in Latin-only font and needs no extra CDN/font files.
+function customerStatementCents(value) {
+  const number = Number(value == null || value === '' ? 0 : value);
+  if (!Number.isFinite(number)) throw new Error('Invalid statement amount');
+  return Math.round(number * 100);
+}
+
+function buildCustomerStatement(orders, payments) {
+  if (!orders.length) throw new Error('No customer orders');
+  if (!Array.isArray(payments)) throw new Error('Payments could not be loaded');
+  const customer = JSON.parse(orders[0].customer)[0];
+  const email = resolveCustomerEmail(customer.email);
+  if (!email) throw new Error('Missing customer email');
+  const rows = orders.map(order => ({
+    id: String(order.orderId || ''),
+    date: order.created,
+    status: order.status,
+    cents: customerStatementCents(JSON.parse(order.customer)[0].orderTotal)
+  })).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const total = rows.reduce((sum, row) => sum + row.cents, 0);
+  const paid = payments
+    .filter(payment => resolveCustomerEmail(payment.email) === email)
+    .reduce((sum, payment) => sum + customerStatementCents(payment.amount), 0);
+  return { name: customer.name || email, email, rows, total, paid, balance: total - paid };
+}
+
+function createCustomerStatementPDF(statement) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-
-  let y = 20;
-
-  currentCustomerOrders.forEach(order => {
-
-    const customer = JSON.parse(order.customer)[0];
-
-    doc.text(
-      `${order.orderId} - ₪${customer.orderTotal}`,
-      10,
-      y
-    );
-
-    y += 10;
-
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  doc.setProperties({ title: 'Customer account statement', subject: 'Orders, payments and balance', creator: 'KAFTOR Admin' });
+  const money = cents => new Intl.NumberFormat('he-IL', {
+    style: 'currency', currency: 'ILS', minimumFractionDigits: 2
+  }).format(cents / 100);
+  const date = value => {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleDateString('he-IL');
+  };
+  const issued = date(new Date());
+  const chunks = [statement.rows.slice(0, 16)];
+  for (let offset = 16; offset < statement.rows.length; offset += 24) {
+    chunks.push(statement.rows.slice(offset, offset + 24));
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 794 * 3;
+  canvas.height = 1123 * 3;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas rendering is unavailable');
+  ctx.scale(3, 3);
+  const box = (x, y, w, h, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  };
+  const text = (value, x, y, size = 14, color = '#172b4d', align = 'right', width = 690, bold = false, direction = 'rtl') => {
+    ctx.font = `${bold ? 'bold ' : ''}${size}px Arial, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.direction = direction;
+    ctx.fillText(String(value), x, y, width);
+  };
+  chunks.forEach((rows, pageIndex) => {
+    box(0, 0, 794, 1123, '#ffffff');
+    box(0, 0, 794, 10, '#2563eb');
+    text('KAFTOR', 48, 48, 17, '#2563eb', 'left', 180, true, 'ltr');
+    text('כרטסת לקוח', 746, 52, 28, '#172b4d', 'right', 460, true);
+    text(`תאריך הפקה: ${issued}`, 746, 89, 12, '#64748b');
+    let tableY = 177;
+    if (pageIndex === 0) {
+      box(48, 116, 698, 82, '#f1f5f9');
+      text(statement.name, 728, 142, 21, '#172b4d', 'right', 660, true);
+      text(statement.email, 728, 176, 13, '#64748b', 'right', 660, false, 'ltr');
+      const cards = [
+        { x: 520, label: 'סה״כ הזמנות', value: statement.total, color: '#172b4d', bg: '#f1f5f9' },
+        { x: 284, label: 'סה״כ שולם', value: statement.paid, color: '#047857', bg: '#ecfdf5' },
+        { x: 48, label: statement.balance < 0 ? 'יתרת זכות' : 'יתרה לתשלום', value: Math.abs(statement.balance), color: statement.balance > 0 ? '#b91c1c' : '#047857', bg: statement.balance > 0 ? '#fef2f2' : '#ecfdf5' }
+      ];
+      cards.forEach(card => {
+        box(card.x, 218, 226, 92, card.bg);
+        text(card.label, card.x + 210, 243, 14, '#64748b', 'right', 194);
+        text(money(card.value), card.x + 210, 280, 25, card.color, 'right', 194, true);
+      });
+      text('סיכום החשבון כולל את כל הזמנות הלקוח ואת כל התשלומים שנרשמו.', 746, 336, 12, '#64748b');
+      text('התשלומים משויכים ללקוח ולא להזמנה מסוימת. כל הסכומים בש״ח.', 746, 357, 12, '#64748b');
+      text(`פירוט הזמנות (${statement.rows.length})`, 746, 390, 18, '#172b4d', 'right', 650, true);
+      tableY = 413;
+    } else {
+      text(`${statement.name} | פירוט הזמנות - המשך`, 746, 137, 18, '#172b4d', 'right', 690, true);
+    }
+    box(48, tableY, 698, 36, '#172b4d');
+    const columns = [
+      { x: 728, width: 220, title: 'מספר הזמנה' },
+      { x: 477, width: 125, title: 'תאריך' },
+      { x: 327, width: 115, title: 'סטטוס' },
+      { x: 188, width: 122, title: 'סכום' }
+    ];
+    columns.forEach(col => text(col.title, col.x, tableY + 18, 13, '#ffffff', 'right', col.width, true));
+    rows.forEach((row, rowIndex) => {
+      const y = tableY + 36 + rowIndex * 34;
+      box(48, y, 698, 34, rowIndex % 2 ? '#ffffff' : '#f8fafc');
+      box(48, y + 33, 698, 1, '#e2e8f0');
+      const status = ({ APPROVED: 'מאושרת', PENDING: 'ממתינה', CANCELLED: 'מבוטלת', RETURNED: 'החזרה' })[row.status] || row.status || '-';
+      [row.id, date(row.date), status, money(row.cents)].forEach((value, index) => {
+        text(value, columns[index].x, y + 17, 13, '#172b4d', 'right', columns[index].width, index === 3, index < 2 ? 'ltr' : 'rtl');
+      });
+    });
+    box(48, 1058, 698, 1, '#cbd5e1');
+    text(`עמוד ${pageIndex + 1} מתוך ${chunks.length}`, 746, 1082, 11, '#64748b');
+    text('KAFTOR | סיכום חשבון לקוח', 48, 1082, 11, '#64748b', 'left', 350);
+    if (pageIndex) doc.addPage();
+    doc.addImage(canvas, 'PNG', 0, 0, 210, 297, `statement-page-${pageIndex}`, 'FAST');
   });
+  return doc;
+}
 
-  doc.save("customer-orders.pdf");
+async function exportOrdersPDF() {
+  if (exportOrdersPDF.busy) return;
+  if (!currentCustomerOrders.length) {
+    alert('אין הזמנות לייצוא');
+    return;
+  }
+  exportOrdersPDF.busy = true;
+  const button = document.querySelector('[onclick="exportOrdersPDF()"]');
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'מכין PDF...';
+  }
+  try {
+    // Snapshot the selected account before asynchronous work (the modal may change).
+    const orders = currentCustomerOrders.slice();
+    const payments = await fetchPayments();
+    const statement = buildCustomerStatement(orders, payments);
+    if (document.fonts?.ready) await document.fonts.ready;
+    const doc = createCustomerStatementPDF(statement);
+    const safeName = String(statement.name).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 80);
+    doc.save(`customer-statement-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } catch (error) {
+    console.error('Customer statement export failed:', error);
+    alert('לא ניתן להפיק את הקובץ. ודאו שנתוני ההזמנות והתשלומים נטענו ונסו שוב.');
+  } finally {
+    exportOrdersPDF.busy = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 function openPaymentModal(email, name) {
