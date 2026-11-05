@@ -1398,6 +1398,38 @@ function customerStatementCents(value) {
   return Math.round(number * 100);
 }
 
+function customerStatementItems(order) {
+  let source = order.items;
+  if (typeof source === 'string') source = JSON.parse(source);
+  const entries = [];
+  const visit = value => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!value || typeof value !== 'object') return;
+    if ('barcode' in value || 'amount' in value || 'qty' in value || 'quantity' in value) {
+      entries.push([value.barcode || value.sku || '', value]);
+    } else {
+      Object.entries(value).forEach(([barcode, item]) => {
+        if (item && typeof item === 'object') entries.push([barcode, item]);
+      });
+    }
+  };
+  visit(source);
+  return entries.map(([barcode, item]) => {
+    const quantity = item.amount ?? item.qty ?? item.quantity;
+    const qty = quantity == null || quantity === '' ? null : Number(quantity);
+    if (qty !== null && !Number.isFinite(qty)) throw new Error('Invalid item quantity');
+    const unitCents = item.price == null || item.price === '' ? null : customerStatementCents(item.price);
+    const totalCents = item.total == null || item.total === ''
+      ? (qty !== null && unitCents !== null ? Math.round(qty * unitCents) : null)
+      : customerStatementCents(item.total);
+    return {
+      barcode: String(barcode),
+      name: String(item.name || item.productName || INVENTORY_BY_BARCODE[barcode]?.name || barcode || 'פריט ללא שם'),
+      qty, unitCents, totalCents
+    };
+  });
+}
+
 function buildCustomerStatement(orders, payments) {
   if (!orders.length) throw new Error('No customer orders');
   if (!Array.isArray(payments)) throw new Error('Payments could not be loaded');
@@ -1408,6 +1440,7 @@ function buildCustomerStatement(orders, payments) {
     id: String(order.orderId || ''),
     date: order.created,
     status: order.status,
+    items: customerStatementItems(order),
     cents: customerStatementCents(JSON.parse(order.customer)[0].orderTotal)
   })).sort((a, b) => new Date(a.date) - new Date(b.date));
   const total = rows.reduce((sum, row) => sum + row.cents, 0);
@@ -1430,10 +1463,6 @@ function createCustomerStatementPDF(statement) {
     return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleDateString('he-IL');
   };
   const issued = date(new Date());
-  const chunks = [statement.rows.slice(0, 16)];
-  for (let offset = 16; offset < statement.rows.length; offset += 24) {
-    chunks.push(statement.rows.slice(offset, offset + 24));
-  }
   const canvas = document.createElement('canvas');
   canvas.width = 794 * 3;
   canvas.height = 1123 * 3;
@@ -1452,7 +1481,56 @@ function createCustomerStatementPDF(statement) {
     ctx.direction = direction;
     ctx.fillText(String(value), x, y, width);
   };
-  chunks.forEach((rows, pageIndex) => {
+  const wrapName = value => {
+    ctx.font = '13px Arial, sans-serif';
+    const lines = [];
+    let line = '';
+    for (const word of String(value).split(/\s+/)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= 304) { line = candidate; continue; }
+      if (line) lines.push(line);
+      line = '';
+      for (const character of word) {
+        if (line && ctx.measureText(line + character).width > 304) { lines.push(line); line = ''; }
+        line += character;
+      }
+    }
+    if (line || !lines.length) lines.push(line);
+    return lines;
+  };
+  // Layout first, then render: page counts are accurate and item rows never clip.
+  const pages = [[]];
+  let layoutY = 413;
+  const nextPage = () => { pages.push([]); layoutY = 177; };
+  statement.rows.forEach(order => {
+    const items = order.items.length ? order.items : [{name: 'לא נרשם פירוט פריטים להזמנה זו', barcode: '', qty: null, unitCents: null, totalCents: null}];
+    const printable = items.flatMap(item => {
+      const lines = wrapName(item.name);
+      const parts = [];
+      for (let offset = 0; offset < lines.length; offset += 12) {
+        const part = lines.slice(offset, offset + 12);
+        parts.push({...item, lines: part, continuation: offset > 0, height: Math.max(44, part.length * 17 + 24)});
+      }
+      return parts;
+    });
+    let offset = 0;
+    while (offset < printable.length) {
+      // Reserve the order heading, column labels, subtotal and spacing.
+      if (layoutY + 66 + printable[offset].height + 46 > 1028) nextPage();
+      const start = offset;
+      let height = 0;
+      while (offset < printable.length && layoutY + 66 + height + printable[offset].height + 46 <= 1028) {
+        height += printable[offset].height;
+        offset++;
+      }
+      const complete = offset === printable.length;
+      pages[pages.length - 1].push({order, items: printable.slice(start, offset), continued: start > 0, complete});
+      layoutY += 66 + height + 46;
+      if (!complete) nextPage();
+    }
+  });
+
+  pages.forEach((blocks, pageIndex) => {
     box(0, 0, 794, 1123, '#ffffff');
     box(0, 0, 794, 10, '#2563eb');
     text('KAFTOR', 48, 48, 17, '#2563eb', 'left', 180, true, 'ltr');
@@ -1480,25 +1558,45 @@ function createCustomerStatementPDF(statement) {
     } else {
       text(`${statement.name} | פירוט הזמנות - המשך`, 746, 137, 18, '#172b4d', 'right', 690, true);
     }
-    box(48, tableY, 698, 36, '#172b4d');
-    const columns = [
-      { x: 728, width: 220, title: 'מספר הזמנה' },
-      { x: 477, width: 125, title: 'תאריך' },
-      { x: 327, width: 115, title: 'סטטוס' },
-      { x: 188, width: 122, title: 'סכום' }
-    ];
-    columns.forEach(col => text(col.title, col.x, tableY + 18, 13, '#ffffff', 'right', col.width, true));
-    rows.forEach((row, rowIndex) => {
-      const y = tableY + 36 + rowIndex * 34;
-      box(48, y, 698, 34, rowIndex % 2 ? '#ffffff' : '#f8fafc');
-      box(48, y + 33, 698, 1, '#e2e8f0');
-      const status = ({ APPROVED: 'מאושרת', PENDING: 'ממתינה', CANCELLED: 'מבוטלת', RETURNED: 'החזרה' })[row.status] || row.status || '-';
-      [row.id, date(row.date), status, money(row.cents)].forEach((value, index) => {
-        text(value, columns[index].x, y + 17, 13, '#172b4d', 'right', columns[index].width, index === 3, index < 2 ? 'ltr' : 'rtl');
+    blocks.forEach(block => {
+      const { order } = block;
+      const status = ({ APPROVED: 'מאושרת', PENDING: 'ממתינה', CANCELLED: 'מבוטלת', RETURNED: 'החזרה' })[order.status] || order.status || '-';
+      box(48, tableY, 698, 36, '#e8eef8');
+      text(`הזמנה ${order.id}${block.continued ? ' (המשך)' : ''}`, 728, tableY + 18, 14, '#172b4d', 'right', 410, true);
+      text(`${date(order.date)} | ${status}`, 66, tableY + 18, 12, '#475569', 'left', 230);
+      tableY += 36;
+      box(48, tableY, 698, 30, '#172b4d');
+      const columns = [
+        {x:728, width:310, label:'מוצר / ברקוד'},
+        {x:388, width:68, label:'כמות'},
+        {x:294, width:100, label:'מחיר ליחידה'},
+        {x:172, width:106, label:'סה״כ לפריט'}
+      ];
+      columns.forEach(col => text(col.label, col.x, tableY + 15, 12, '#ffffff', 'right', col.width, true));
+      tableY += 30;
+      block.items.forEach((item, index) => {
+        box(48, tableY, 698, item.height, index % 2 ? '#ffffff' : '#f8fafc');
+        item.lines.forEach((line, lineIndex) => text(line, 728, tableY + 15 + lineIndex * 17, 13, '#172b4d', 'right', 310));
+        if (item.barcode) text(`${item.barcode}${item.continuation ? ' (...)' : ''}`, 728, tableY + item.height - 10, 10, '#64748b', 'right', 310, false, 'ltr');
+        if (!item.continuation) {
+          const values = [item.qty === null ? '-' : new Intl.NumberFormat('he-IL', {maximumFractionDigits: 4}).format(item.qty), item.unitCents === null ? '-' : money(item.unitCents), item.totalCents === null ? '-' : money(item.totalCents)];
+          values.forEach((value, index) => text(value, columns[index + 1].x, tableY + item.height / 2, 13, '#172b4d', 'right', columns[index + 1].width, index === 2));
+        }
+        box(48, tableY + item.height - 1, 698, 1, '#e2e8f0');
+        tableY += item.height;
       });
+      if (block.complete) {
+        box(48, tableY, 698, 32, '#eff6ff');
+        text('סה״כ להזמנה', 728, tableY + 16, 13, '#172b4d', 'right', 310, true);
+        text(money(order.cents), 172, tableY + 16, 14, '#172b4d', 'right', 106, true);
+      } else {
+        text('המשך פירוט ההזמנה בעמוד הבא', 728, tableY + 16, 11, '#64748b');
+      }
+      tableY += 46;
     });
+
     box(48, 1058, 698, 1, '#cbd5e1');
-    text(`עמוד ${pageIndex + 1} מתוך ${chunks.length}`, 746, 1082, 11, '#64748b');
+    text(`עמוד ${pageIndex + 1} מתוך ${pages.length}`, 746, 1082, 11, '#64748b');
     text('KAFTOR | סיכום חשבון לקוח', 48, 1082, 11, '#64748b', 'left', 350);
     if (pageIndex) doc.addPage();
     doc.addImage(canvas, 'PNG', 0, 0, 210, 297, `statement-page-${pageIndex}`, 'FAST');
@@ -1523,6 +1621,7 @@ async function exportOrdersPDF() {
     // Snapshot the selected account before asynchronous work (the modal may change).
     const orders = currentCustomerOrders.slice();
     const payments = await fetchPayments();
+    if (!Object.keys(INVENTORY_BY_BARCODE).length) await loadInventoryFromFireBase();
     const statement = buildCustomerStatement(orders, payments);
     if (document.fonts?.ready) await document.fonts.ready;
     const doc = createCustomerStatementPDF(statement);
