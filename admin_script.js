@@ -1393,9 +1393,26 @@ function closeOrdersModal(){
 // Render Hebrew with the browser's bidi/font engine before embedding each page.
 // This avoids jsPDF's built-in Latin-only font and needs no extra CDN/font files.
 function customerStatementCents(value) {
-  const number = Number(value == null || value === '' ? 0 : value);
+  if (value == null || value === '') return 0;
+  let number;
+  if (typeof value === 'number') {
+    number = value;
+  } else if (typeof value === 'string') {
+    // Older orders contain formatted prices (for example "₪ 32.00").
+    let text = value.trim().replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/\u2212/g, '-');
+    const parentheses = text.startsWith('(') && text.endsWith(')');
+    if (parentheses) text = text.slice(1, -1);
+    text = text.replace(/(?:ILS|NIS|USD|EUR|GBP|ש["״']?ח|[₪$€£])/gi, '').replace(/\s/g, '');
+    // Validate grouping rather than stripping arbitrary characters from bad data.
+    if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(text) || (parentheses && /^[+-]/.test(text))) {
+      throw new Error('Invalid statement amount');
+    }
+    number = Number(text.replace(/,/g, '')) * (parentheses ? -1 : 1);
+  } else {
+    throw new Error('Invalid statement amount');
+  }
   if (!Number.isFinite(number)) throw new Error('Invalid statement amount');
-  return Math.round(number * 100);
+  return Math.sign(number) * Math.round((Math.abs(number) + Number.EPSILON) * 100);
 }
 
 function customerStatementItems(order) {
