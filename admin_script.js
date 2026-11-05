@@ -140,9 +140,7 @@ async function loadAllOrders() {
     ordersData = data;
     paymentsData = await fetchPayments(); 
     
-    let test = buildCustomersFromOrders();
-    console.log(test);
-    console.log(ordersData);
+
 
     // 3. Render rows
     data.forEach(o => {
@@ -581,6 +579,8 @@ function addItemToCurrentOrder(barcode, qty) {
 }
 
 async function sendOrderEmail(customerEmail, cart ,orderTotal,comment) {
+  await loadCustomerAliases();
+  customerEmail = getCustomerDetails(customerEmail).email;
   // Build a clean table for the email
 let emailTable = `
   <table dir="rtl" style="width: 100%; border-collapse: collapse; font-family: sans-serif;text-align: right;">
@@ -691,7 +691,7 @@ Promise.all([
   loadInventory()
 ]).finally(hideLoading);
 
-loadAllOrders();
+const customerDataReady = loadAllOrders();
 
 function showLoading(message = "Friendly hold on 🙂<br>We’re loading things for you...") {
   const overlay = document.getElementById('loadingOverlay');
@@ -1075,197 +1075,296 @@ function toggleOrderDetails(orderId, rowEl) {
 function getProductName(barcode) {
   return INVENTORY_BY_BARCODE[barcode]?.name || `Unknown (${barcode})`;
 }
-let CUSTOMER_ALIASES = {};
-async function loadCustomerAliases() {
+let CUSTOMER_ALIASES = Object.create(null);
+let CUSTOMER_PROFILES = Object.create(null);
+let customerAliasesLoading = null;
+let currentCustomerAccount = '';
+let editingCustomerAccount = '';
 
-  CUSTOMER_ALIASES = {};
+function normalizeCustomerEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
 
-  const snapshot =
-    await db.collection("customerAliases").get();
+function loadCustomerAliases() {
+  if (customerAliasesLoading) return customerAliasesLoading;
+  customerAliasesLoading = db.collection('customerAliases').get().then(snapshot => {
+    // Publish a complete snapshot; never expose an empty map during a request.
+    const aliases = Object.create(null);
+    const profiles = Object.create(null);
+    snapshot.forEach(doc => {
+      const key = normalizeCustomerEmail(doc.id);
+      const data = doc.data();
+      if (data.primary) aliases[key] = normalizeCustomerEmail(data.primary);
+      if (data.profile) profiles[key] = data.profile;
+    });
+    CUSTOMER_ALIASES = aliases;
+    CUSTOMER_PROFILES = profiles;
+  }).finally(() => { customerAliasesLoading = null; });
+  return customerAliasesLoading;
+}
 
-  snapshot.forEach(doc => {
-
-    CUSTOMER_ALIASES[doc.id.toLowerCase()] =
-      doc.data().primary.toLowerCase();
-  });
-
-  console.log("Loaded aliases:", CUSTOMER_ALIASES);
+async function refreshCustomerAliases() {
+  if (customerAliasesLoading) await customerAliasesLoading;
+  await loadCustomerAliases();
 }
 
 function resolveCustomerEmail(email) {
-
-  if (!email) return "";
-
-  email = email.toLowerCase();
-
-  return CUSTOMER_ALIASES[email] || email;
+  let current = normalizeCustomerEmail(email);
+  const visited = [];
+  while (current && CUSTOMER_ALIASES[current] && CUSTOMER_ALIASES[current] !== current) {
+    const cycleStart = visited.indexOf(current);
+    // Existing cyclic merges still group consistently, whichever alias is used.
+    if (cycleStart !== -1) return visited.slice(cycleStart).sort()[0];
+    visited.push(current);
+    current = CUSTOMER_ALIASES[current];
+  }
+  return current;
 }
-// CUSTUMER ADN KOKRDER SUMMERRY RENDERING LOGIC
+
+function getCustomerDetails(email, fallback = {}) {
+  const accountEmail = resolveCustomerEmail(email);
+  const profile = CUSTOMER_PROFILES[accountEmail] || Object.entries(CUSTOMER_PROFILES)
+    .find(([key]) => resolveCustomerEmail(key) === accountEmail)?.[1] || {};
+  return {
+    accountEmail,
+    name: profile.name ?? fallback.name ?? '',
+    email: profile.email || accountEmail,
+    phone: profile.phone ?? fallback.phone ?? ''
+  };
+}
+
+function getCustomerOrders(email) {
+  const account = resolveCustomerEmail(email);
+  return ordersData.filter(order => resolveCustomerEmail(JSON.parse(order.customer)[0].email) === account);
+}
+
 async function buildCustomersFromOrders() {
-
+  await customerDataReady;
   await loadCustomerAliases();
-
-  const customersMap = {};
-
-  // ORDERS
+  const customers = Object.create(null);
   ordersData.forEach(order => {
-
-    let customer = JSON.parse(order.customer);
-    customer = customer[0];
-
-    let email =
-      customer.email?.toLowerCase() || false;
-
-    if (!email) return;
-
-    // 🔥 resolve alias
-    email = resolveCustomerEmail(email);
-
-    if (!customersMap[email]) {
-
-      customersMap[email] = {
-        name: customer.name || "",
-        email: email,
-        phone: customer.phone || "",
-        totalOrders: 0,
-        totalAmount: 0,
-        totalPaid: 0
-      };
-    }
-
-    customersMap[email].totalOrders += 1;
-
-    customersMap[email].totalAmount +=
-      Number(customer.orderTotal || 0);
+    const original = JSON.parse(order.customer)[0];
+    const key = resolveCustomerEmail(original.email);
+    if (!key) return;
+    if (!customers[key]) customers[key] = {
+      ...getCustomerDetails(key, original), totalOrders: 0, totalAmount: 0, totalPaid: 0
+    };
+    customers[key].totalOrders += 1;
+    customers[key].totalAmount += Number(original.orderTotal || 0);
   });
-
-  // PAYMENTS
   paymentsData.forEach(payment => {
-
-    let email =
-      payment.email?.toLowerCase();
-
-    if (!email) return;
-
-    // 🔥 resolve alias
-    email = resolveCustomerEmail(email);
-
-    if (!customersMap[email]) return;
-
-    customersMap[email].totalPaid +=
-      Number(payment.amount || 0);
+    const key = resolveCustomerEmail(payment.email);
+    if (customers[key]) customers[key].totalPaid += Number(payment.amount || 0);
   });
+  return customers;
+}
 
-  console.log(customersMap);
-
-  return customersMap;
+function customerAction(label, className, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.className = `${className} text-white px-3 py-1 rounded text-sm`;
+  button.onclick = action;
+  return button;
 }
 
 async function renderCustomers() {
-  
-  const tbody = document.querySelector("#customersTable tbody");
-  tbody.innerHTML = "";
-  
-  const customersMap =  await buildCustomersFromOrders();
-  const customers = Object.values(customersMap);
-  
-  let totalCustomers = customers.length;
-  let totalOrders = 0;
-  let totalPaid = 0;
-  let totalBalance = 0;
-
-  customers.forEach(customer => {
-
-    const balance = customer.totalAmount - customer.totalPaid;
-
-    totalOrders += customer.totalOrders;
-    totalPaid += customer.totalPaid;
-    totalBalance += balance;
-
-    const row = document.createElement("tr");
-
-    row.innerHTML = `
-      <td class="p-3">${customer.name}</td>
-      <td class="p-3">${customer.email}</td>
-      <td class="p-3">${customer.phone}</td>
-      <td class="p-3">${customer.totalOrders}</td>
-      <td class="p-3">₪${customer.totalAmount.toFixed(2)}</td>
-      <td class="p-3 text-green-600">₪${customer.totalPaid.toFixed(2)}</td>
-      <td class="p-3 ${balance > 0 ? 'text-red-600 font-semibold' : ''}">
-        ₪${balance.toFixed(2)}
-      </td>
-      <td class="p-3">
-        <button onclick="openPaymentModal('${customer.email}', '${customer.name}')"
-          class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
-          הוסף תשלום
-        </button>
-
-         <button onclick="openOrdersModal('${customer.email}','${customer.name}')"
-          class="bg-gray-700 text-white px-3 py-1 rounded text-sm">
-          הצג הזמנות
-        </button>
-        <button onclick="openMergeCustomerModal('${customer.email}','${customer.name}')"
-          class="bg-purple-600 text-white px-3 py-1 rounded text-sm">
-          מיזוג לקוח
-        </button>
-      </td>
-    `;
-
-    tbody.appendChild(row);
-  });
-
-  // Update summary cards
-  document.getElementById("customersTotalCount").innerText = totalCustomers;
-  document.getElementById("customersTotalOrders").innerText = totalOrders;
-  document.getElementById("customersTotalPaid").innerText = `₪${totalPaid.toFixed(2)}`;
-  document.getElementById("customersTotalBalance").innerText = `₪${totalBalance.toFixed(2)}`;
+  const tbody = document.querySelector('#customersTable tbody');
+  try {
+    const customers = Object.values(await buildCustomersFromOrders());
+    // Replace rows after loading, so concurrent renders cannot append duplicates.
+    tbody.replaceChildren();
+    let totalOrders = 0, totalPaid = 0, totalBalance = 0;
+    customers.forEach(customer => {
+      const balance = customer.totalAmount - customer.totalPaid;
+      totalOrders += customer.totalOrders;
+      totalPaid += customer.totalPaid;
+      totalBalance += balance;
+      const row = document.createElement('tr');
+      const values = [customer.name, customer.email, customer.phone, customer.totalOrders,
+        `₪${customer.totalAmount.toFixed(2)}`, `₪${customer.totalPaid.toFixed(2)}`, `₪${balance.toFixed(2)}`];
+      values.forEach((value, index) => {
+        const cell = document.createElement('td');
+        cell.className = `p-3 ${index === 5 ? 'text-green-600' : index === 6 && balance > 0 ? 'text-red-600 font-semibold' : ''}`;
+        cell.textContent = value;
+        if (index === 1 || index === 2) cell.dir = 'ltr';
+        row.appendChild(cell);
+      });
+      const actions = document.createElement('td');
+      actions.className = 'p-3 flex flex-wrap gap-2';
+      actions.append(
+        customerAction('עריכת לקוח', 'bg-blue-700', () => openEditCustomerModal(customer.accountEmail)),
+        customerAction('הוסף תשלום', 'bg-blue-600', () => openPaymentModal(customer.accountEmail, customer.name)),
+        customerAction('הצג הזמנות', 'bg-gray-700', () => openOrdersModal(customer.accountEmail, customer.name)),
+        customerAction('מיזוג לקוח', 'bg-purple-600', () => openMergeCustomerModal(customer.accountEmail, customer.name))
+      );
+      row.appendChild(actions);
+      tbody.appendChild(row);
+    });
+    document.getElementById('customersTotalCount').innerText = customers.length;
+    document.getElementById('customersTotalOrders').innerText = totalOrders;
+    document.getElementById('customersTotalPaid').innerText = `₪${totalPaid.toFixed(2)}`;
+    document.getElementById('customersTotalBalance').innerText = `₪${totalBalance.toFixed(2)}`;
+  } catch (error) {
+    console.error('Customer loading failed:', error);
+    tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-red-600">לא ניתן לטעון את הלקוחות. נסו שוב.</td></tr>';
+  }
 }
 
+async function openOrdersModal(email) {
+  const customers = await buildCustomersFromOrders();
+  const account = resolveCustomerEmail(email);
+  const customer = customers[account];
+  if (!customer) return;
+  currentCustomerAccount = account;
+  currentCustomerOrders = getCustomerOrders(account);
+  document.getElementById('ordersDateFrom').value = '';
+  document.getElementById('ordersDateTo').value = '';
+  document.getElementById('ordersModalTitle').textContent = `הזמנות - ${customer.name} (${currentCustomerOrders.length})`;
+  renderCustomerOrders(currentCustomerOrders);
+  document.getElementById('ordersModal').classList.remove('hidden');
+  document.getElementById('ordersModal').classList.add('flex');
+}
+
+async function openEditCustomerModal(email) {
+  const customers = await buildCustomersFromOrders();
+  const account = resolveCustomerEmail(email);
+  const customer = customers[account];
+  if (!customer) return;
+  editingCustomerAccount = account;
+  document.getElementById('editCustomerName').value = customer.name;
+  document.getElementById('editCustomerEmail').value = customer.email;
+  document.getElementById('editCustomerPhone').value = customer.phone;
+  document.getElementById('editCustomerError').textContent = '';
+  document.getElementById('editCustomerModal').classList.remove('hidden');
+}
+
+function closeEditCustomerModal() {
+  if (saveCustomerDetails.busy) return;
+  document.getElementById('editCustomerModal').classList.add('hidden');
+  editingCustomerAccount = '';
+}
+
+async function saveCustomerDetails(event) {
+  event.preventDefault();
+  if (saveCustomerDetails.busy || !editingCustomerAccount) return;
+  const errorLabel = document.getElementById('editCustomerError');
+  const name = document.getElementById('editCustomerName').value.trim();
+  const email = normalizeCustomerEmail(document.getElementById('editCustomerEmail').value);
+  const phone = document.getElementById('editCustomerPhone').value.trim();
+  if (!name || !/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(email)) {
+    errorLabel.textContent = 'יש להזין שם וכתובת אימייל תקינה.';
+    return;
+  }
+  saveCustomerDetails.busy = true;
+  const button = document.getElementById('saveCustomerDetailsBtn');
+  button.disabled = true;
+  errorLabel.textContent = '';
+  let saved = false;
+  try {
+    const customers = await buildCustomersFromOrders();
+    const account = resolveCustomerEmail(editingCustomerAccount);
+    const target = resolveCustomerEmail(email);
+    if (target !== account && (customers[target] || CUSTOMER_ALIASES[email] || CUSTOMER_PROFILES[email])) {
+      throw new Error('האימייל כבר משויך ללקוח אחר. יש למזג את הלקוחות לפני שינוי האימייל.');
+    }
+    const collection = db.collection('customerAliases');
+    const accountRef = collection.doc(account);
+    const emailRef = collection.doc(email);
+    await db.runTransaction(async transaction => {
+      const accountDoc = await transaction.get(accountRef);
+      const emailDoc = email === account ? accountDoc : await transaction.get(emailRef);
+      if (accountDoc.data()?.primary && resolveCustomerEmail(accountDoc.data().primary) !== account) {
+        throw new Error('הלקוח מוזג בזמן העריכה. יש לפתוח את פרטי הלקוח מחדש.');
+      }
+      if (email !== account && emailDoc.exists && (!emailDoc.data().primary || resolveCustomerEmail(emailDoc.data().primary) !== account)) {
+        throw new Error('האימייל כבר משויך ללקוח אחר. יש למזג את הלקוחות תחילה.');
+      }
+      transaction.set(accountRef, {
+        primary: account, profile: { name, email, phone }, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      // Keep the account key stable and link future orders using the corrected email.
+      if (email !== account) transaction.set(emailRef, {
+        primary: account, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    saved = true;
+    await refreshCustomerAliases();
+    await renderCustomers();
+    if (currentCustomerAccount && resolveCustomerEmail(currentCustomerAccount) === account) {
+      await openOrdersModal(account);
+    }
+  } catch (error) {
+    console.error('Customer update failed:', error);
+    errorLabel.textContent = saved ? 'הפרטים נשמרו, אך התצוגה לא התעדכנה. רעננו את הדף.' :
+      (error.message?.startsWith('האימייל') || error.message?.startsWith('הלקוח') ? error.message : 'שמירת הפרטים נכשלה. נסו שוב.');
+  } finally {
+    saveCustomerDetails.busy = false;
+    button.disabled = false;
+  }
+  if (saved && !errorLabel.textContent) closeEditCustomerModal();
+}
+
+async function submitCustomerMerge() {
+  if (submitCustomerMerge.busy) return;
+  submitCustomerMerge.busy = true;
+  showLoading('ממזג לקוחות...');
+  try {
+    await loadCustomerAliases();
+    const primary = resolveCustomerEmail(CURRENT_MERGE_PRIMARY);
+    const secondary = resolveCustomerEmail(document.getElementById('mergeSecondary').value);
+    if (!primary || !secondary || primary === secondary) throw new Error('בחרו לקוח אחר למיזוג.');
+    const primaryRef = db.collection('customerAliases').doc(primary);
+    const secondaryRef = db.collection('customerAliases').doc(secondary);
+    await db.runTransaction(async transaction => {
+      const primaryDoc = await transaction.get(primaryRef);
+      const secondaryDoc = await transaction.get(secondaryRef);
+      if ((primaryDoc.data()?.primary && normalizeCustomerEmail(primaryDoc.data().primary) !== primary) ||
+          (secondaryDoc.data()?.primary && normalizeCustomerEmail(secondaryDoc.data().primary) !== secondary)) {
+        throw new Error('פרטי המיזוג השתנו. רעננו את הדף ונסו שוב.');
+      }
+      transaction.set(secondaryRef, { primary, createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+    await refreshCustomerAliases();
+    await renderCustomers();
+    if (currentCustomerAccount) await openOrdersModal(currentCustomerAccount);
+    closeMergeCustomerModal();
+  } catch (error) {
+    console.error('Customer merge failed:', error);
+    alert(error.message?.includes('מיזוג') ? error.message : 'שגיאה במיזוג הלקוחות. נסו שוב.');
+  } finally {
+    submitCustomerMerge.busy = false;
+    hideLoading();
+  }
+}
+
+
 // modal perr customers 
-function renderCustomerOrders(orders){
-  console.log(orders)
-  const tbody = document.getElementById("customerOrdersTable");
-  tbody.innerHTML = "";
-
+function renderCustomerOrders(orders) {
+  const tbody = document.getElementById('customerOrdersTable');
+  tbody.replaceChildren();
   let total = 0;
-
   orders.forEach(order => {
-
     const customer = JSON.parse(order.customer)[0];
-    const orderTotal = customer.orderTotal;
-    
+    const orderTotal = Number(customer.orderTotal || 0);
     total += orderTotal;
-
-    const row = document.createElement("tr");
-
-    row.innerHTML = `
-      <td class="p-2">${new Date(order.created).toLocaleDateString()}</td>
-      <td class="p-2">${order.orderId}</td>
-      <td class="p-2">${order.items.length}</td>
-      <td class="p-2">₪${orderTotal.toFixed(2)}</td>
-
-      <td class="p-2 flex gap-2">
-
-        <button onclick="viewOrderDetailsModal('${order.orderId}')"
-          class="bg-gray-700 text-white px-2 py-1 rounded text-xs">
-          פרטי הזמנה
-        </button>
-
-        <button onclick="openResendEmailModal('${order.orderId}','${customer.email}')"
-          class="bg-blue-600 text-white px-2 py-1 rounded text-xs">
-          שלח מייל
-        </button>
-
-      </td>
-    `;
-
-
+    const row = document.createElement('tr');
+    [new Date(order.created).toLocaleDateString('he-IL'), order.orderId, order.items.length, `₪${orderTotal.toFixed(2)}`].forEach(value => {
+      const cell = document.createElement('td');
+      cell.className = 'p-2';
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+    const actions = document.createElement('td');
+    actions.className = 'p-2 flex gap-2';
+    actions.append(
+      customerAction('פרטי הזמנה', 'bg-gray-700', () => viewOrderDetailsModal(order.orderId)),
+      customerAction('שלח מייל', 'bg-blue-600', () => openResendEmailModal(order.orderId, customer.email))
+    );
+    row.appendChild(actions);
     tbody.appendChild(row);
-
   });
-
-  document.getElementById("customerOrdersTotal").innerText =
-    `₪${total.toFixed(2)}`;
+  document.getElementById('customerOrdersTotal').textContent = `₪${total.toFixed(2)}`;
 }
 
 function filterCustomerOrders(){
@@ -1315,7 +1414,8 @@ function buildCustomerStatement(orders, payments) {
   const paid = payments
     .filter(payment => resolveCustomerEmail(payment.email) === email)
     .reduce((sum, payment) => sum + customerStatementCents(payment.amount), 0);
-  return { name: customer.name || email, email, rows, total, paid, balance: total - paid };
+  const details = getCustomerDetails(email, customer);
+  return { name: details.name || details.email, email: details.email, rows, total, paid, balance: total - paid };
 }
 
 function createCustomerStatementPDF(statement) {
@@ -1497,49 +1597,7 @@ async function submitPayment() {
   closePaymentModal();
 }
 
-function submitCustomerMerge() {
 
-  const secondary =
-    document.getElementById("mergeSecondary").value;
-
-  if (!secondary) {
-    alert("בחר לקוח למיזוג");
-    return;
-  }
-
-  if (secondary === CURRENT_MERGE_PRIMARY) {
-    alert("לא ניתן למזג את אותו לקוח");
-    return;
-  }
-
-  showLoading("Merging customers...");
-
-  db.collection("customerAliases")
-    .doc(secondary.toLowerCase())
-    .set({
-      primary: CURRENT_MERGE_PRIMARY.toLowerCase(),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    })
-    .then(() => {
-
-      hideLoading();
-
-      alert("לקוחות מוזגו בהצלחה");
-
-      closeMergeCustomerModal();
-
-      renderCustomers();
-
-    })
-    .catch(err => {
-
-      hideLoading();
-
-      console.error(err);
-
-      alert("שגיאה במיזוג לקוחות");
-    });
-}
 
 function loadInventoryFromFireBase() {
   return db.collection("Inventory")
@@ -1563,14 +1621,3 @@ function loadInventoryFromFireBase() {
              console.error("Failed to load inventory:", err);
            });
 }
-
-
-
-
-
-
-
-
-
-
-

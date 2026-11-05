@@ -1,6 +1,7 @@
 <!DOCTYPE html >
 <html dir="rtl">
 <head>
+  <meta charset="UTF-8">
   <title>Admin Dashboard</title>
   <!-- <link rel="stylesheet" href="admin_style.css"> -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -384,22 +385,7 @@ function closeAddItemModal() {
 <script>
   let currentCustomerOrders = [];
 
-    async function openOrdersModal(email, name){
-      document.getElementById("ordersModal").classList.remove("hidden");
-      document.getElementById("ordersModalTitle").innerText = `Orders - ${name}`;
-     
-      const orders = ordersData // your orders object
-      await loadCustomerAliases();
-      const primaryEmail = resolveCustomerEmail(email);
 
-      currentCustomerOrders = orders.filter(order => {
-        const customer = JSON.parse(order.customer)[0];
-        
-        return resolveCustomerEmail(customer.email) == primaryEmail;
-      });
-
-      renderCustomerOrders(currentCustomerOrders);
-    }
 
 </script>
 <!--  order detail adn send mail modal -->
@@ -441,9 +427,19 @@ function closeAddItemModal() {
 <script>
   let currentOrderForEmail = null;
 
-function openResendEmailModal(orderId, defaultEmail){
+async function openResendEmailModal(orderId, defaultEmail){
+  try {
+    await loadCustomerAliases();
+    defaultEmail = getCustomerDetails(defaultEmail).email;
+  } catch (error) {
+    console.error('Customer contact could not be loaded:', error);
+    alert('לא ניתן לטעון את פרטי הלקוח. נסו שוב.');
+    return;
+  }
+
 
   currentOrderForEmail = orderId;
+  document.getElementById('sendDefaultEmailBtn').textContent = `שלח אל ${defaultEmail}`;
 
   document.getElementById("resendEmailModal").classList.remove("hidden");
 
@@ -582,7 +578,7 @@ class="text-red-600 font-bold">
 
   if(!order) return;
 
-  const customer = JSON.parse(order.customer)[0];
+  const customer = getCustomerDetails(JSON.parse(order.customer)[0].email, JSON.parse(order.customer)[0]);
 
   const itemsObject = order.items[0];
 
@@ -627,8 +623,8 @@ class="text-red-600 font-bold">
 
       <h3 class="font-semibold mb-2">לקוח</h3>
 
-      <div>${customer.name}</div>
-      <div>${customer.email}</div>
+      <div>${escapeHtml(customer.name)}</div>
+      <div>${escapeHtml(customer.email)}</div>
 
     </div>
 
@@ -738,13 +734,12 @@ async function openMergeCustomerModal(email, name) {
 
   customers.forEach(customer => {
 
-    if (customer.email === email) return;
+    if (customer.accountEmail === resolveCustomerEmail(email)) return;
 
-    select.innerHTML += `
-      <option value="${customer.email}">
-        ${customer.name} (${customer.email})
-      </option>
-    `;
+    const option = document.createElement('option');
+    option.value = customer.accountEmail;
+    option.textContent = `${customer.name} (${customer.email})`;
+    select.appendChild(option);
   });
 
   document
@@ -764,6 +759,31 @@ function closeMergeCustomerModal() {
 
 
 </script>
+<!-- Edit the shared contact details without changing historical order records. -->
+<div id="editCustomerModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="editCustomerTitle">
+  <form onsubmit="saveCustomerDetails(event)" class="bg-white rounded-lg shadow-xl p-6 w-[480px] max-w-[95vw] space-y-4">
+    <h2 id="editCustomerTitle" class="text-xl font-bold">עריכת פרטי לקוח</h2>
+    <p class="text-sm text-gray-500">הפרטים משותפים לכל ההזמנות של הלקוח, כולל לקוחות שמוזגו. האימייל המעודכן ישמש לשליחת סיכומי הזמנות.</p>
+    <div>
+      <label for="editCustomerName" class="block text-sm mb-1">שם הלקוח</label>
+      <input id="editCustomerName" type="text" required maxlength="160" class="border p-2 rounded w-full" autocomplete="name">
+    </div>
+    <div>
+      <label for="editCustomerEmail" class="block text-sm mb-1">אימייל</label>
+      <input id="editCustomerEmail" type="email" required maxlength="254" class="border p-2 rounded w-full text-left" dir="ltr" autocomplete="email">
+    </div>
+    <div>
+      <label for="editCustomerPhone" class="block text-sm mb-1">טלפון</label>
+      <input id="editCustomerPhone" type="tel" maxlength="60" class="border p-2 rounded w-full text-left" dir="ltr" autocomplete="tel">
+    </div>
+    <p id="editCustomerError" class="text-sm text-red-600" role="alert"></p>
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="closeEditCustomerModal()" class="border rounded px-4 py-2">ביטול</button>
+      <button id="saveCustomerDetailsBtn" type="submit" class="bg-blue-700 text-white rounded px-4 py-2 disabled:opacity-50">שמור פרטים</button>
+    </div>
+  </form>
+</div>
+
 </body>
 
 </html>
