@@ -1196,6 +1196,7 @@ async function renderCustomers() {
         customerAction('עריכת לקוח', 'bg-blue-700', () => openEditCustomerModal(customer.accountEmail)),
         customerAction('הוסף תשלום', 'bg-blue-600', () => openPaymentModal(customer.accountEmail, customer.name)),
         customerAction('הצג הזמנות', 'bg-gray-700', () => openOrdersModal(customer.accountEmail, customer.name)),
+        customerAction('ייצוא תשלומים', 'bg-emerald-700', event => exportCustomerPaymentsPDF(customer.accountEmail, event.currentTarget)),
         customerAction('מיזוג לקוח', 'bg-purple-600', () => openMergeCustomerModal(customer.accountEmail, customer.name))
       );
       row.appendChild(actions);
@@ -1736,4 +1737,143 @@ function loadInventoryFromFireBase() {
            .catch(err => {
              console.error("Failed to load inventory:", err);
            });
+}
+
+
+function buildCustomerPaymentStatement(email, payments, fallback = {}) {
+  if (!Array.isArray(payments)) throw new Error('Payments could not be loaded');
+  const account = resolveCustomerEmail(email);
+  if (!account) throw new Error('Missing customer account');
+  const rows = payments.filter(payment => resolveCustomerEmail(payment.email) === account).map(payment => {
+    const value = payment.date;
+    const parsed = value == null || value === '' ? NaN : new Date(value).getTime();
+    return {
+      timestamp: Number.isFinite(parsed) ? parsed : null,
+      date: Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString('he-IL') : String(value || 'לא צוין'),
+      note: String(payment.note || ''),
+      cents: customerStatementCents(payment.amount)
+    };
+  }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity));
+  return { ...getCustomerDetails(account, fallback), rows, total: rows.reduce((sum, row) => sum + row.cents, 0) };
+}
+
+function createCustomerPaymentsPDF(statement) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  doc.setProperties({ title: 'Customer payment history', subject: 'Payment dates, amounts and notes', creator: 'KAFTOR Admin' });
+  const canvas = document.createElement('canvas');
+  canvas.width = 794 * 3;
+  canvas.height = 1123 * 3;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas rendering is unavailable');
+  ctx.scale(3, 3);
+  const money = cents => new Intl.NumberFormat('he-IL', {style:'currency',currency:'ILS'}).format(cents / 100);
+  const box = (x, y, w, h, color) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); };
+  const text = (value, x, y, size = 14, color = '#172b4d', width = 690, bold = false, align = 'right', direction = 'rtl') => {
+    ctx.font = `${bold ? 'bold ' : ''}${size}px Arial, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.direction = direction;
+    ctx.fillText(String(value), x, y, width);
+  };
+  const wrapNote = value => {
+    ctx.font = '13px Arial, sans-serif';
+    const lines = [];
+    let line = '';
+    for (const word of String(value || '-').split(/\s+/)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= 330) { line = candidate; continue; }
+      if (line) lines.push(line);
+      line = '';
+      for (const character of word) {
+        if (line && ctx.measureText(line + character).width > 330) { lines.push(line); line = ''; }
+        line += character;
+      }
+    }
+    if (line || !lines.length) lines.push(line);
+    return lines;
+  };
+  const pages = [[]];
+  let y = 378;
+  statement.rows.forEach(row => {
+    const lines = wrapNote(row.note);
+    for (let offset = 0; offset < lines.length; offset += 12) {
+      const part = lines.slice(offset, offset + 12);
+      const height = Math.max(40, part.length * 18 + 18);
+      if (y + height > 1028) { pages.push([]); y = 206; }
+      pages[pages.length - 1].push({...row, lines:part, continued:offset > 0, height});
+      y += height;
+    }
+  });
+  pages.forEach((rows, index) => {
+    box(0, 0, 794, 1123, '#ffffff');
+    box(0, 0, 794, 10, '#2563eb');
+    text('KAFTOR', 48, 48, 17, '#2563eb', 180, true, 'left', 'ltr');
+    text('פירוט תשלומים', 746, 52, 28, '#172b4d', 460, true);
+    text(`תאריך הפקה: ${new Date().toLocaleDateString('he-IL')}`, 746, 89, 12, '#64748b');
+    let tableY = 170;
+    if (index === 0) {
+      box(48, 116, 698, 82, '#f1f5f9');
+      text(statement.name || statement.email, 728, 142, 21, '#172b4d', 660, true);
+      text(statement.email, 728, 176, 13, '#64748b', 660, false, 'right', 'ltr');
+      box(406, 216, 340, 82, '#f1f5f9');
+      box(48, 216, 340, 82, '#ecfdf5');
+      text('מספר תשלומים', 728, 239, 14, '#64748b', 304);
+      text(statement.rows.length, 728, 274, 25, '#172b4d', 304, true);
+      text('סה״כ שולם', 370, 239, 14, '#64748b', 304);
+      text(money(statement.total), 370, 274, 25, '#047857', 304, true);
+      text('כולל תשלומים של לקוחות שמוזגו. כל הסכומים בש״ח.', 746, 320, 12, '#64748b');
+      tableY = 342;
+    } else {
+      text(`${statement.name || statement.email} | פירוט תשלומים - המשך`, 746, 134, 18, '#172b4d', 690, true);
+    }
+    box(48, tableY, 698, 36, '#172b4d');
+    text('תאריך תשלום', 728, tableY + 18, 13, '#ffffff', 135, true);
+    text('הערה / אמצעי תשלום', 550, tableY + 18, 13, '#ffffff', 330, true);
+    text('סכום', 168, tableY + 18, 13, '#ffffff', 102, true);
+    tableY += 36;
+    if (!statement.rows.length) text('לא נרשמו תשלומים ללקוח זה.', 728, tableY + 28, 14, '#64748b');
+    rows.forEach((row, rowIndex) => {
+      box(48, tableY, 698, row.height, rowIndex % 2 ? '#ffffff' : '#f8fafc');
+      if (!row.continued) {
+        text(row.date, 728, tableY + 20, 13, '#172b4d', 135, false, 'right', 'ltr');
+        text(money(row.cents), 168, tableY + 20, 13, row.cents < 0 ? '#b91c1c' : '#047857', 102, true);
+      }
+      row.lines.forEach((line, lineIndex) => text(line, 550, tableY + 20 + lineIndex * 18, 13, '#172b4d', 330));
+      box(48, tableY + row.height - 1, 698, 1, '#e2e8f0');
+      tableY += row.height;
+    });
+    box(48, 1058, 698, 1, '#cbd5e1');
+    text(`עמוד ${index + 1} מתוך ${pages.length}`, 746, 1082, 11, '#64748b');
+    text('KAFTOR | פירוט תשלומי לקוח', 48, 1082, 11, '#64748b', 350, false, 'left');
+    if (index) doc.addPage();
+    doc.addImage(canvas, 'PNG', 0, 0, 210, 297, `payment-page-${index}`, 'FAST');
+  });
+  return doc;
+}
+
+async function exportCustomerPaymentsPDF(email, button) {
+  if (exportCustomerPaymentsPDF.busy) return;
+  exportCustomerPaymentsPDF.busy = true;
+  const label = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'מכין PDF...'; }
+  try {
+    const customers = await buildCustomersFromOrders();
+    const account = resolveCustomerEmail(email);
+    const customer = customers[account];
+    if (!customer) throw new Error('Customer could not be loaded');
+    const payments = await fetchPayments();
+    const statement = buildCustomerPaymentStatement(account, payments, customer);
+    if (document.fonts?.ready) await document.fonts.ready;
+    const doc = createCustomerPaymentsPDF(statement);
+    const safeName = String(statement.name || statement.email).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 80);
+    doc.save(`customer-payments-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } catch (error) {
+    console.error('Payment history export failed:', error);
+    alert('לא ניתן לייצא את התשלומים. ודאו שהנתונים נטענו ונסו שוב.');
+  } finally {
+    exportCustomerPaymentsPDF.busy = false;
+    if (button) { button.disabled = false; button.textContent = label; }
+  }
 }
